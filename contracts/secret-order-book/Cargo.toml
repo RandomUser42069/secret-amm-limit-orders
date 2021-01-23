@@ -1,5 +1,5 @@
 [package]
-name = "secret-limit-orders"
+name = "secret-order-book"
 version = "0.1.0"
 authors = ["RandomUser42069 <rand.user.42069@protonmail.com>"]
 edition = "2018"

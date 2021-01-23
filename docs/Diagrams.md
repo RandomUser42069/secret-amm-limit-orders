@@ -1,1 +1,0 @@
-![Diagrams](SecretAMM Limit Orders - Architecture and Flows.png)
