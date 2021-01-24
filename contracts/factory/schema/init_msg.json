@@ -3,12 +3,21 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
-    "count"
+    "entropy",
+    "secret_order_book_code_hash",
+    "secret_order_book_code_id"
   ],
   "properties": {
-    "count": {
+    "entropy": {
+      "type": "string"
+    },
+    "secret_order_book_code_hash": {
+      "type": "string"
+    },
+    "secret_order_book_code_id": {
       "type": "integer",
-      "format": "int32"
+      "format": "uint64",
+      "minimum": 0.0
     }
   }
 }

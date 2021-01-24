@@ -1,23 +1,37 @@
-use cosmwasm_std::{
-    to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, StdError,
-    StdResult, Storage,
-};
+use cosmwasm_std::{Api, Binary, Env, Extern, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, StdResult, Storage, to_binary};
 
-use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
-use crate::state::{config, config_read, State};
+use crate::{msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg}, rand::sha_256};
+use crate::state::{save, load, may_load};
+use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
+use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
+ 
+/// prefix for viewing keys
+pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
+/// storage key for prng seed
+pub const PRNG_SEED_KEY: &[u8] = b"prngseed";
+/// storage key for the factory admin
+pub const ADMIN_KEY: &[u8] = b"admin";
+/// storage key for the children contracts 
+pub const SECRET_ORDER_BOOK_CONTRACT_CODE_ID: &[u8] = b"secretorderbookcontractcodeid";
+/// storage key for the children contracts 
+pub const SECRET_ORDER_BOOK_CONTRACT_CODE_HASH: &[u8] = b"secretorderbookcontractcodehash";
+/// storage key for the factory admin
+pub const FACTORY_KEY: &[u8] = b"factorykey";
+/// response size
+pub const BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let state = State {
-        count: msg.count,
-        owner: deps.api.canonical_address(&env.message.sender)?,
-    };
-
-    config(&mut deps.storage).save(&state)?;
-
+    let prng_seed: Vec<u8> = sha_256(base64::encode(msg.entropy.clone()).as_bytes()).to_vec();
+    let key = ViewingKey::new(&env, &prng_seed, msg.entropy.clone().as_ref());
+    save(&mut deps.storage, FACTORY_KEY, &format!("{}", key))?;
+    save(&mut deps.storage, PRNG_SEED_KEY, &prng_seed)?;
+    save(&mut deps.storage, ADMIN_KEY, &env.message.sender)?;
+    save(&mut deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID, &msg.secret_order_book_code_id)?;
+    save(&mut deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH, &msg.secret_order_book_code_hash)?;
     Ok(InitResponse::default())
 }
 
@@ -27,37 +41,32 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::Increment {} => try_increment(deps, env),
-        HandleMsg::Reset { count } => try_reset(deps, env, count),
+        HandleMsg::CreateViewingKey { entropy } => try_create_key(deps, env, &entropy),
+        //HandleMsg::ChangeArenaContractCodeId { code_id, code_hash } => try_change_arena_contract_code_id(deps, env, &code_id, &code_hash),
+        //HandleMsg::NewArenaInstanciate {name, entropy} => try_arena_instanciate(deps, env, &name, &entropy),
+        //HandleMsg::InitCallBackFromArenaToFactory {auth_key, contract_address} => try_arena_instanciated_callback(deps, env, auth_key, contract_address)
     }
 }
 
-pub fn try_increment<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    _env: Env,
-) -> StdResult<HandleResponse> {
-    config(&mut deps.storage).update(|mut state| {
-        state.count += 1;
-        Ok(state)
-    })?;
-
-    Ok(HandleResponse::default())
-}
-
-pub fn try_reset<S: Storage, A: Api, Q: Querier>(
+fn try_create_key<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    count: i32,
-) -> StdResult<HandleResponse> {
-    let sender_address_raw = deps.api.canonical_address(&env.message.sender)?;
-    config(&mut deps.storage).update(|mut state| {
-        if sender_address_raw != state.owner {
-            return Err(StdError::Unauthorized { backtrace: None });
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(HandleResponse::default())
+    entropy: &str,
+) -> HandleResult {
+    // create and store the key
+    let prng_seed: Vec<u8> = load(&deps.storage, PRNG_SEED_KEY)?;
+    let key = ViewingKey::new(&env, &prng_seed, entropy.as_ref());
+    let message_sender = &deps.api.canonical_address(&env.message.sender)?;
+    let mut key_store = PrefixedStorage::new(PREFIX_VIEW_KEY, &mut deps.storage);
+    save(&mut key_store, message_sender.as_slice(), &key.to_hashed())?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::ViewingKey {
+            key: format!("{}", key),
+        })?),
+    })
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
@@ -65,82 +74,24 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+        /*QueryMsg::IsKeyValid {
+            address,
+            viewing_key,
+            factory_key
+        } => try_validate_key(deps, &address, viewing_key, factory_key),
+        */
+        QueryMsg::ArenaContractCodeId {} => secret_order_book_contract_code_id(deps),
+        //QueryMsg::Arenas {} => arenas(deps)
     }
 }
 
-fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<CountResponse> {
-    let state = config_read(&deps.storage).load()?;
-    Ok(CountResponse { count: state.count })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env};
-    use cosmwasm_std::{coins, from_binary, StdError};
-
-    #[test]
-    fn proper_initialization() {
-        let mut deps = mock_dependencies(20, &[]);
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(1000, "earth"));
-
-        // we can just call .unwrap() to assert this was a success
-        let res = init(&mut deps, env, msg).unwrap();
-        assert_eq!(0, res.messages.len());
-
-        // it worked, let's query the state
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(17, value.count);
-    }
-
-    #[test]
-    fn increment() {
-        let mut deps = mock_dependencies(20, &coins(2, "token"));
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(2, "token"));
-        let _res = init(&mut deps, env, msg).unwrap();
-
-        // anyone can increment
-        let env = mock_env("anyone", &coins(2, "token"));
-        let msg = HandleMsg::Increment {};
-        let _res = handle(&mut deps, env, msg).unwrap();
-
-        // should increase counter by 1
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies(20, &coins(2, "token"));
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(2, "token"));
-        let _res = init(&mut deps, env, msg).unwrap();
-
-        // not anyone can reset
-        let unauth_env = mock_env("anyone", &coins(2, "token"));
-        let msg = HandleMsg::Reset { count: 5 };
-        let res = handle(&mut deps, unauth_env, msg);
-        match res {
-            Err(StdError::Unauthorized { .. }) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_env = mock_env("creator", &coins(2, "token"));
-        let msg = HandleMsg::Reset { count: 5 };
-        let _res = handle(&mut deps, auth_env, msg).unwrap();
-
-        // should now be 5
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(5, value.count);
-    }
+fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>
+) -> QueryResult {
+    let arena_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
+    let arena_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
+    to_binary(&QueryAnswer::ArenaContractCodeID {
+        code_id: arena_contract_code_id,
+        code_hash: arena_contract_code_hash
+    })
 }
