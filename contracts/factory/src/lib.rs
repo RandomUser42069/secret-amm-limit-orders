@@ -4,6 +4,7 @@ pub mod state;
 pub mod viewing_key;
 pub mod rand;
 pub mod utils;
+pub mod unit_tests;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {

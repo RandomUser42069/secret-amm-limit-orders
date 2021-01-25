@@ -1,10 +1,12 @@
-use cosmwasm_std::{Api, Binary, Env, Extern, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, StdResult, Storage, to_binary};
+use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, to_binary};
 
-use crate::{msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg}, rand::sha_256};
+use crate::{msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, SecretOrderBookContractInitMsg, ResponseStatus::Success}, rand::sha_256};
 use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
  
+use secret_toolkit::{snip20::token_info_query, utils::{InitCallback}};
+
 /// prefix for viewing keys
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
 /// storage key for prng seed
@@ -17,6 +19,8 @@ pub const SECRET_ORDER_BOOK_CONTRACT_CODE_ID: &[u8] = b"secretorderbookcontractc
 pub const SECRET_ORDER_BOOK_CONTRACT_CODE_HASH: &[u8] = b"secretorderbookcontractcodehash";
 /// storage key for the factory admin
 pub const FACTORY_KEY: &[u8] = b"factorykey";
+/// storage key for the secret order books
+pub const PREFIX_TOKEN_SECRET_ORDER_BOOKS: &[u8] = b"tokensecretorderbooks";
 /// response size
 pub const BLOCK_SIZE: usize = 256;
 
@@ -42,9 +46,19 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     match msg {
         HandleMsg::CreateViewingKey { entropy } => try_create_key(deps, env, &entropy),
-        //HandleMsg::ChangeArenaContractCodeId { code_id, code_hash } => try_change_arena_contract_code_id(deps, env, &code_id, &code_hash),
-        //HandleMsg::NewArenaInstanciate {name, entropy} => try_arena_instanciate(deps, env, &name, &entropy),
-        //HandleMsg::InitCallBackFromArenaToFactory {auth_key, contract_address} => try_arena_instanciated_callback(deps, env, auth_key, contract_address)
+        HandleMsg::ChangeArenaContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
+        HandleMsg::NewSecretOrderBookInstanciate {
+            token1_code_address,
+            token1_code_hash,
+            token2_code_address,
+            token2_code_hash,
+        } => try_secret_order_book_instanciate(deps, env, &token1_code_address, &token1_code_hash, &token2_code_address, &token2_code_hash),
+        HandleMsg::InitCallBackFromSecretOrderBookToFactory {
+            auth_key, 
+            contract_address,  
+            token1_address, 
+            token2_address
+        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, contract_address, token1_address, token2_address)
     }
 }
 
@@ -69,20 +83,159 @@ fn try_create_key<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn try_change_secret_order_book_contract_code_id<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    code_id: &u64,
+    code_hash: &String
+) -> HandleResult {
+    let admin: HumanAddr = load(&deps.storage, ADMIN_KEY)?;
+    if env.message.sender != admin {
+        return Err(StdError::generic_err(
+            "Permission Denied.",
+        ));
+    }
+    
+    save(&mut deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID, &code_id)?;
+    save(&mut deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH, &code_hash)?;
+    
+    Ok(HandleResponse::default())
+}
+
+fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    token1_code_address: &HumanAddr,
+    token1_code_hash: &String,
+    token2_code_address: &HumanAddr,
+    token2_code_hash: &String,
+) -> HandleResult {  
+    let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
+    let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
+    let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
+    
+    let initmsg = SecretOrderBookContractInitMsg {
+        factory_hash: env.contract_code_hash,
+        factory_address: env.contract.address,
+        factory_key,
+        token1_code_address: token1_code_address.to_owned(),
+        token1_code_hash: token1_code_hash.to_owned(),
+        token2_code_address: token2_code_address.to_owned(),
+        token2_code_hash: token2_code_hash.to_owned()
+    };
+    impl InitCallback for SecretOrderBookContractInitMsg {
+        const BLOCK_SIZE: usize = BLOCK_SIZE;
+    }
+
+    //query tokens info and get symbols from Addresses
+    let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_code_hash.to_owned(), token1_code_address.to_owned());
+    let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_code_hash.to_owned(), token2_code_address.to_owned());
+
+    //TODO: Deal with duplicated token simbols
+    let cosmosmsg =
+        initmsg.to_cosmos_msg(format!("({}) Secret Order Book - {}/{}",secret_order_book_contract_code_id,response_token1.unwrap().symbol,response_token2.unwrap().symbol).to_string(), secret_order_book_contract_code_id, secret_order_book_contract_code_hash, None)?;
+
+    Ok(HandleResponse {
+        messages: vec![cosmosmsg],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Status {
+            status: Success,
+            message: None,
+        })?),
+    })
+}
+
+pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    auth_key: String,
+    contract_address: HumanAddr,
+    token1_address: HumanAddr,
+    token2_address: HumanAddr,
+) -> HandleResult {   
+    let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
+    let input_key: String = auth_key;
+    
+    if factory_key != input_key {
+        return Err(StdError::generic_err(
+            "Permission Denied.",
+        ));
+    }
+
+    let token1_address_raw = &deps.api.canonical_address(&token1_address)?;
+    let token2_address_raw = &deps.api.canonical_address(&token2_address)?;
+
+    let mut token_secret_order_books = PrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &mut deps.storage);
+    let load_token1_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token1_address_raw.as_slice())?;
+    let load_token2_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token2_address_raw.as_slice())?;
+
+    let mut token1_secret_order_books = load_token1_secret_order_books.unwrap_or_default();
+    let mut token2_secret_order_books = load_token2_secret_order_books.unwrap_or_default();
+
+    token1_secret_order_books.insert(0,contract_address.clone());
+    token2_secret_order_books.insert(0,contract_address.clone());
+
+    save(&mut token_secret_order_books, token1_address_raw.as_slice(), &token1_secret_order_books)?;
+    save(&mut token_secret_order_books, token2_address_raw.as_slice(), &token2_secret_order_books)?;
+
+    Ok(HandleResponse::default())
+}
+
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        /*QueryMsg::IsKeyValid {
+        QueryMsg::IsKeyValid {
             address,
             viewing_key,
             factory_key
         } => try_validate_key(deps, &address, viewing_key, factory_key),
-        */
         QueryMsg::ArenaContractCodeId {} => secret_order_book_contract_code_id(deps),
-        //QueryMsg::Arenas {} => arenas(deps)
+        QueryMsg::SecretOrderBooks {token_address} => secret_order_books(deps, token_address)
     }
+}
+
+fn try_validate_key<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    address: &HumanAddr,
+    viewing_key: String,
+    factory_key: String
+) -> QueryResult {
+    let addr_raw = &deps.api.canonical_address(address)?;
+    let state_factory_key: String = load(&deps.storage, FACTORY_KEY)?;
+    if factory_key != state_factory_key {
+        return Err(StdError::generic_err(
+            "Permission Denied.",
+        ));
+    }
+
+    to_binary(&QueryAnswer::IsKeyValid {
+        is_valid: is_key_valid(&deps.storage, addr_raw, viewing_key)?,
+    })
+}
+
+fn is_key_valid<S: ReadonlyStorage>(
+    storage: &S,
+    address: &CanonicalAddr,
+    viewing_key: String,
+) -> StdResult<bool> {
+    // load the address' key
+    let read_key = ReadonlyPrefixedStorage::new(PREFIX_VIEW_KEY, storage);
+    let load_key: Option<[u8; VIEWING_KEY_SIZE]> = may_load(&read_key, address.as_slice())?;
+    let input_key = ViewingKey(viewing_key);
+    // if a key was set
+    if let Some(expected_key) = load_key {
+        // and it matches
+        if input_key.check_viewing_key(&expected_key) {
+            return Ok(true);
+        }
+    } else {
+        // Checking the key will take significant time. We don't want to exit immediately if it isn't set
+        // in a way which will allow to time the command and determine if a viewing key doesn't exist
+        input_key.check_viewing_key(&[0u8; VIEWING_KEY_SIZE]);
+    }
+    Ok(false)
 }
 
 fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
@@ -93,5 +246,19 @@ fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
     to_binary(&QueryAnswer::ArenaContractCodeID {
         code_id: arena_contract_code_id,
         code_hash: arena_contract_code_hash
+    })
+}
+
+fn secret_order_books <S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    token_address: HumanAddr
+) -> QueryResult {
+    let token_address_raw = &deps.api.canonical_address(&token_address)?;
+
+    let token_secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &deps.storage);
+    let load_token_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token_address_raw.as_slice())?;
+
+    to_binary(&QueryAnswer::SecretOrderBooks {
+        secret_order_books: load_token_secret_order_books.unwrap_or_default()
     })
 }

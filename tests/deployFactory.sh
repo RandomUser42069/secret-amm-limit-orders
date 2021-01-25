@@ -49,3 +49,15 @@ deployed=$(docker exec -it "$docker_name" secretcli tx compute store "/root/code
 factory_code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
 factory_code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
 echo "Stored contract: '$factory_code_id', '$factory_code_hash'"
+
+echo "Deploying factory..."
+label=$(date +"%T")
+
+STORE_TX_HASH=$( 
+  secretcli tx compute instantiate $factory_code_id '{"entropy": "'$RANDOM'", "secret_order_book_code_id": '$factory_code_id', "secret_order_book_code_hash": "'${factory_code_hash:2}'"}' --from $deployer_name_a --gas 1500000 --label $label -b block -y |
+  jq -r .txhash
+)
+wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
+
+factory_contract_address=$(docker exec -it $docker_name secretcli query compute list-contract-by-code $factory_code_id | jq '.[-1].address')
+echo "factory_contract_address: '$factory_contract_address'"
