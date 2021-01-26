@@ -24,7 +24,7 @@ pub struct SecretOrderBookContractInitMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     CreateViewingKey {entropy: String},
-    ChangeArenaContractCodeId {code_id: u64, code_hash: String},
+    ChangeSecretOrderBookContractCodeId {code_id: u64, code_hash: String},
     NewSecretOrderBookInstanciate {
         token1_code_address: HumanAddr,
         token1_code_hash: String,
@@ -73,7 +73,7 @@ pub enum QueryMsg {
         //authentication on factory functions
         factory_key: String
     },
-    ArenaContractCodeId {},
+    SecretOrderBookContractCodeId {},
     SecretOrderBooks {
         token_address: HumanAddr,
     }
@@ -86,6 +86,6 @@ pub enum QueryAnswer {
     //ViewingKeyError { error: String },
     /// result of authenticating address/key pair
     IsKeyValid { is_valid: bool },
-    ArenaContractCodeID {code_id: u64, code_hash: String},
+    SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
     SecretOrderBooks {secret_order_books: Vec<HumanAddr>}
 }

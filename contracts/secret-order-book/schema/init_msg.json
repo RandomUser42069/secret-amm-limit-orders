@@ -3,12 +3,40 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
-    "count"
+    "factory_address",
+    "factory_hash",
+    "factory_key",
+    "token1_code_address",
+    "token1_code_hash",
+    "token2_code_address",
+    "token2_code_hash"
   ],
   "properties": {
-    "count": {
-      "type": "integer",
-      "format": "int32"
+    "factory_address": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "factory_hash": {
+      "type": "string"
+    },
+    "factory_key": {
+      "type": "string"
+    },
+    "token1_code_address": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "token1_code_hash": {
+      "type": "string"
+    },
+    "token2_code_address": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "token2_code_hash": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "HumanAddr": {
+      "type": "string"
     }
   }
 }

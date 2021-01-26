@@ -1,14 +1,31 @@
 #!/bin/bash
 
-cd contracts/factory
-#cargo clean
-rm -f ./contract.wasm ./contract.wasm.gz
-cargo wasm
-cargo schema
-docker run --rm -v $PWD:/contract \
---mount type=volume,source=factory_cache,target=/code/target \
---mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-enigmampc/secret-contract-optimizer
+echo Build new contracts to deploy? [yn]
+read toBuild
+
+if [ "$toBuild" != "${toBuild#[Yy]}" ] ;then
+    cd contracts/factory
+    #cargo clean
+    RUST_BACKTRACE=1 cargo unit-test
+    rm -f ./contract.wasm ./contract.wasm.gz
+    cargo wasm
+    cargo schema
+    docker run --rm -v $PWD:/contract \
+    --mount type=volume,source=factory_cache,target=/code/target \
+    --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+    enigmampc/secret-contract-optimizer
+
+    cd ../secret-order-book
+    #cargo clean
+    RUST_BACKTRACE=1 cargo unit-test
+    rm -f ./contract.wasm ./contract.wasm.gz
+    cargo wasm
+    cargo schema
+    docker run --rm -v $PWD:/contract \
+    --mount type=volume,source=factory_cache,target=/code/target \
+    --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+    enigmampc/secret-contract-optimizer
+fi
 
 docker_name=secretdev
 
@@ -23,6 +40,10 @@ function wait_for_tx() {
 }
 
 export SGX_MODE=SW
+
+################################################################
+## Get current contracts onchain
+################################################################
 
 deployer_name_a=a
 deployer_name_b=b
@@ -45,19 +66,46 @@ token2_contract_address=$(docker exec -it $docker_name secretcli query compute l
 token2_hash="$(secretcli query compute contract-hash $(echo "$token2_contract_address" | tr -d '"'))"
 echo "token2 contract address: '$token2_contract_address'"
 
+################################################################
+## Deploy Factory and Secret Order Book
+################################################################
+
 deployed=$(docker exec -it "$docker_name" secretcli tx compute store "/root/code/contracts/factory/contract.wasm.gz" --from a --gas 2000000 -b block -y)
 factory_code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
 factory_code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
 echo "Stored contract: '$factory_code_id', '$factory_code_hash'"
 
-echo "Deploying factory..."
+deployed=$(docker exec -it "$docker_name" secretcli tx compute store "/root/code/contracts/secret-order-book/contract.wasm.gz" --from a --gas 2000000 -b block -y)
+secret_order_book_code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
+secret_order_book_code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
+echo "Stored contract: '$secret_order_book_code_id', '$secret_order_book_code_hash'"
+
 label=$(date +"%T")
 
+################################################################
+## Instanciate Factory
+################################################################
 STORE_TX_HASH=$( 
-  secretcli tx compute instantiate $factory_code_id '{"entropy": "'$RANDOM'", "secret_order_book_code_id": '$factory_code_id', "secret_order_book_code_hash": "'${factory_code_hash:2}'"}' --from $deployer_name_a --gas 1500000 --label $label -b block -y |
+  secretcli tx compute instantiate $factory_code_id '{"entropy": "'$RANDOM'", "secret_order_book_code_id": '$secret_order_book_code_id', "secret_order_book_code_hash": '$secret_order_book_code_hash'}' --from $deployer_name_a --gas 1500000 --label $label -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
 
 factory_contract_address=$(docker exec -it $docker_name secretcli query compute list-contract-by-code $factory_code_id | jq '.[-1].address')
 echo "factory_contract_address: '$factory_contract_address'"
+
+################################################################
+## Factory Handle Instanciate Secret Order Book 
+################################################################
+STORE_TX_HASH=$(
+  secretcli tx compute execute $(echo "$factory_contract_address" | tr -d '"') '{"new_secret_order_book_instanciate": {"token1_code_address": '$token1_contract_address', "token1_code_hash":"'${token1_hash:2}'", "token2_code_address": '$token2_contract_address', "token2_code_hash":"'${token2_hash:2}'"}}' --from $deployer_name_a -y --gas 1500000 -b block |
+  jq -r .txhash
+)
+wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
+echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
+
+################################################################
+## Factory Query Secret Order Books
+################################################################
+secretcli q compute query $(echo "$factory_contract_address" | tr -d '"') '{"secret_order_books": {"token_address": '$token1_contract_address'}}'
+secretcli q compute query $(echo "$factory_contract_address" | tr -d '"') '{"secret_order_books": {"token_address": '$token2_contract_address'}}'

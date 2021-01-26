@@ -46,7 +46,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     match msg {
         HandleMsg::CreateViewingKey { entropy } => try_create_key(deps, env, &entropy),
-        HandleMsg::ChangeArenaContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
+        HandleMsg::ChangeSecretOrderBookContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
         HandleMsg::NewSecretOrderBookInstanciate {
             token1_code_address,
             token1_code_hash,
@@ -131,7 +131,7 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_code_hash.to_owned(), token1_code_address.to_owned());
     let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_code_hash.to_owned(), token2_code_address.to_owned());
 
-    //TODO: Deal with duplicated token simbols
+    //TODO: Deal with duplicated token symbols
     let cosmosmsg =
         initmsg.to_cosmos_msg(format!("({}) Secret Order Book - {}/{}",secret_order_book_contract_code_id,response_token1.unwrap().symbol,response_token2.unwrap().symbol).to_string(), secret_order_book_contract_code_id, secret_order_book_contract_code_hash, None)?;
 
@@ -191,7 +191,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
             viewing_key,
             factory_key
         } => try_validate_key(deps, &address, viewing_key, factory_key),
-        QueryMsg::ArenaContractCodeId {} => secret_order_book_contract_code_id(deps),
+        QueryMsg::SecretOrderBookContractCodeId {} => secret_order_book_contract_code_id(deps),
         QueryMsg::SecretOrderBooks {token_address} => secret_order_books(deps, token_address)
     }
 }
@@ -241,11 +241,11 @@ fn is_key_valid<S: ReadonlyStorage>(
 fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
 ) -> QueryResult {
-    let arena_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
-    let arena_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
-    to_binary(&QueryAnswer::ArenaContractCodeID {
-        code_id: arena_contract_code_id,
-        code_hash: arena_contract_code_hash
+    let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
+    let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
+    to_binary(&QueryAnswer::SecretOrderBookContractCodeID {
+        code_id: secret_order_book_contract_code_id,
+        code_hash: secret_order_book_contract_code_hash
     })
 }
 
