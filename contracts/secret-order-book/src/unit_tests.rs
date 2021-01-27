@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::{Extern, HumanAddr, StdResult, testing::*};
+    use cosmwasm_std::{Binary, Extern, HumanAddr, StdResult, Uint128, testing::*};
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use schemars::_serde_json::to_string;
-    use std::any::Any;
-    use crate::{contract::{TOKEN1_DATA, FACTORY_DATA, TOKEN2_DATA}, state::{save, load, may_load}};
+    use std::{any::Any};
+    use crate::{contract::{FACTORY_DATA, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::HandleMsg, state::{save, load, may_load}};
     use crate::contract::{init};
 
-    use cosmwasm_std::{Api, Binary, Env, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, Storage, to_binary};
+    use cosmwasm_std::{Api, Env, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, Storage, to_binary};
 
     use crate::{msg::{InitMsg}};
 
@@ -80,5 +80,38 @@ mod tests {
         
         assert_eq!(load_token2_data.unwrap(), HumanAddr("token2address".to_string()));
         assert_eq!(load_token2_hash.unwrap(), "token2hash".to_string());
+    }
+
+    #[test]
+    fn test_handle_receive_create_limit_order() {
+        let (init_result, mut deps) = init_helper(
+            HumanAddr("factoryaddress".to_string()),
+            "factoryhash".to_string(),
+            "factorykey".to_string(),
+            HumanAddr("token1address".to_string()),
+            "token1hash".to_string(),
+            HumanAddr("token2address".to_string()),
+            "token2hash".to_string(),
+        );
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("bob".to_string()), 
+            from: HumanAddr("token1address".to_string()), 
+            amount: Uint128(5),
+            msg: to_binary(&HandleMsg::CreateLimitOrder {}).unwrap()
+        };
+
+        let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
     }
 }

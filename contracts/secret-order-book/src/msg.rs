@@ -1,4 +1,4 @@
-use cosmwasm_std::{HumanAddr, Uint128};
+use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use secret_toolkit::utils::HandleCallback;
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,8 @@ impl HandleCallback for FactoryHandleMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    CreateLimitOrder{}
+    Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
+    CreateLimitOrder {}
 }
 
 /// Queries

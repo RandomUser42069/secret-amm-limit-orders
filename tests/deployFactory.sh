@@ -109,3 +109,25 @@ echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
 ################################################################
 secretcli q compute query $(echo "$factory_contract_address" | tr -d '"') '{"secret_order_books": {"token_address": '$token1_contract_address'}}'
 secretcli q compute query $(echo "$factory_contract_address" | tr -d '"') '{"secret_order_books": {"token_address": '$token2_contract_address'}}'
+secret_order_book_address=$(docker exec $docker_name secretcli q compute query $(echo "$factory_contract_address" | tr -d '"') '{"secret_order_books": {"token_address": '$token1_contract_address'}}' | jq -r .secret_order_books.secret_order_books[0])
+echo $secret_order_book_address
+
+################################################################
+## Factory Create User B VK
+################################################################
+STORE_TX_HASH=$(
+  secretcli tx compute execute $(echo "$factory_contract_address" | tr -d '"') '{"create_viewing_key": {"entropy": "'$RANDOM'"}}' --from $deployer_name_b -y --gas 1500000 -b block |
+  jq -r .txhash
+)
+wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
+user_factory_vk_b=$(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH | jq '.output_data_as_string | fromjson.viewing_key.key')
+
+################################################################
+## Secret Order Book - Create Limit Order
+################################################################
+STORE_TX_HASH=$(
+  secretcli tx compute execute $(echo "$token1_contract_address" | tr -d '"') '{"send":{"recipient": "'$secret_order_book_address'", "amount": "1000000", "msg": "'"$(base64 -w 0 <<<'{"create_limit_order": {}}')"'"}}' --from $deployer_name_b -y --gas 1500000 -b block |
+  jq -r .txhash
+)
+wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
+echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)

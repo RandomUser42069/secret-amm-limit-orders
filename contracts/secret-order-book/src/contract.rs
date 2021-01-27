@@ -1,8 +1,8 @@
-use cosmwasm_std::{Api, Binary, CosmosMsg, Env, Extern, HandleResponse, InitResponse, Querier, StdError, StdResult, Storage, WasmMsg, to_binary};
-use cosmwasm_storage::PrefixedStorage;
+use cosmwasm_std::{Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
+use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::HandleCallback};
 
-use crate::{msg::{FactoryHandleMsg, HandleMsg, InitMsg, QueryAnswer, Snip20Msg, QueryMsg}, state::save};
+use crate::{msg::{FactoryHandleMsg, HandleMsg, InitMsg, QueryAnswer, Snip20Msg, QueryMsg}, state::{load, may_load, save}};
 
 /// storage key for the factory
 pub const FACTORY_DATA: &[u8] = b"factory"; // address, hash, key
@@ -72,8 +72,56 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::CreateLimitOrder { } => Ok(HandleResponse::default()),
+        // Receiver to CreateLimitOrder
+        HandleMsg::Receive { sender, from, amount, msg } => try_receive(deps, env, sender, from, amount, msg),
+        _ => Err(StdError::generic_err("Handler not found!"))
     } 
+}
+
+pub fn try_receive<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    _sender: HumanAddr,
+    from: HumanAddr,
+    amount: Uint128,
+    msg: Binary,
+) -> StdResult<HandleResponse> {
+    let msg: HandleMsg = from_binary(&msg)?;
+
+    if matches!(msg, HandleMsg::Receive { .. }) {
+        return Err(StdError::generic_err(
+            "Recursive call to receive() is not allowed",
+        ));
+    }
+
+    let token1_data = ReadonlyPrefixedStorage::new(TOKEN1_DATA, &deps.storage);
+    let token2_data = ReadonlyPrefixedStorage::new(TOKEN2_DATA, &deps.storage);
+    let load_token1_address: HumanAddr = load(&token1_data, b"address")?;
+    let load_token2_address: HumanAddr = load(&token2_data, b"address")?;
+
+    if load_token1_address != env.message.sender && load_token2_address != env.message.sender { 
+        return Err(StdError::generic_err(format!(
+            "{} is not a known SNIP-20 coin that this contract registered to",
+            env.message.sender
+        )));
+    }
+    
+    if let HandleMsg::CreateLimitOrder { } = msg.clone() {
+        return create_limit_order(deps, env, from, amount)
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Receive handler not found!"
+        )));
+    }
+}
+
+pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    from: HumanAddr,
+    amount: Uint128
+) -> StdResult<HandleResponse> {
+    Ok(HandleResponse::default())
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
