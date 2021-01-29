@@ -1,16 +1,17 @@
+use core::time;
+
 use cosmwasm_std::{Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::HandleCallback};
 
-use crate::{msg::{FactoryHandleMsg, HandleMsg, InitMsg, QueryAnswer, Snip20Msg, QueryMsg}, state::{load, may_load, save}};
+use crate::{msg::{FactoryHandleMsg, HandleMsg, InitMsg, LimitOrderSide, LimitOrderState, LimitOrderStatus, QueryAnswer, QueryMsg, Snip20Msg}, state::{load, may_load, save}};
 
-/// storage key for the factory
 pub const FACTORY_DATA: &[u8] = b"factory"; // address, hash, key
-/// response size
 pub const TOKEN1_DATA: &[u8] = b"token1"; // address, hash
-/// response size
 pub const TOKEN2_DATA: &[u8] = b"token2"; // address, hash
-/// response size
+pub const LIMIT_ORDERS: &[u8] = b"limitorders";
+pub const BID_ORDER_BOOK: &[u8] = b"bidorderbook";
+pub const ASK_ORDER_BOOK: &[u8] = b"askorderbook";
 pub const BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -99,15 +100,21 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
     let load_token1_address: HumanAddr = load(&token1_data, b"address")?;
     let load_token2_address: HumanAddr = load(&token2_data, b"address")?;
 
-    if load_token1_address != env.message.sender && load_token2_address != env.message.sender { 
+    let mut balances = vec![Uint128(0), Uint128(0)];
+
+    if load_token1_address == env.message.sender {
+        balances[0] = amount;
+    } else if load_token2_address == env.message.sender { 
+        balances[1] = amount;
+    } else {
         return Err(StdError::generic_err(format!(
             "{} is not a known SNIP-20 coin that this contract registered to",
             env.message.sender
         )));
     }
     
-    if let HandleMsg::CreateLimitOrder { } = msg.clone() {
-        return create_limit_order(deps, env, from, amount)
+    if let HandleMsg::CreateLimitOrder {side, price} = msg.clone() {
+        return create_limit_order(deps, env, balances, from, side, price)
     } else {
         return Err(StdError::generic_err(format!(
             "Receive handler not found!"
@@ -117,10 +124,29 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
 
 pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    _env: Env,
+    env: Env,
+    balances: Vec<Uint128>,
     from: HumanAddr,
-    amount: Uint128
+    side: LimitOrderSide,
+    price: Uint128
 ) -> StdResult<HandleResponse> {
+
+    // Create new user limit order
+    let user_address = &deps.api.canonical_address(&from)?;
+
+    let limit_order = LimitOrderState {
+        side,
+        status: LimitOrderStatus::Active,
+        price,
+        timestamp: env.block.time,
+        balances
+    };
+    let mut key_store = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
+    save(&mut key_store, user_address.as_slice(), &limit_order)?;
+
+    // Update Order Book
+    
+
     Ok(HandleResponse::default())
 }
 

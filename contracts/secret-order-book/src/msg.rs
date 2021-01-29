@@ -1,4 +1,4 @@
-use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use cosmwasm_std::{Binary, CanonicalAddr, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use secret_toolkit::utils::HandleCallback;
 use serde::{Deserialize, Serialize};
@@ -66,7 +66,10 @@ impl HandleCallback for FactoryHandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
-    CreateLimitOrder {}
+    CreateLimitOrder {
+        side: LimitOrderSide, // bid||ask
+        price: Uint128
+    }
 }
 
 /// Queries
@@ -80,4 +83,37 @@ pub enum QueryMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
     LimitOrders {}
+}
+
+// State
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, JsonSchema)]
+pub enum LimitOrderSide {
+    Bid,
+    Ask,
+}
+
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq)]
+pub enum LimitOrderStatus {
+    Active,
+    PartiallyFilled,
+    Filled,
+    Cancelled,
+    Completed
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LimitOrderState {
+    pub side: LimitOrderSide,
+    pub status: LimitOrderStatus,
+    pub price: Uint128,
+    pub balances: Vec<Uint128>,
+    pub timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct OrderBookState {
+    pub operation: String,
+    pub price: Uint128,
+    pub total_quantity: Uint128,
+    pub limit_orders: Vec<CanonicalAddr>
 }

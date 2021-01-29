@@ -5,12 +5,12 @@ mod tests {
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use schemars::_serde_json::to_string;
     use std::{any::Any};
-    use crate::{contract::{FACTORY_DATA, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::HandleMsg, state::{save, load, may_load}};
+    use crate::{contract::{FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderSide, LimitOrderStatus}, state::{load, may_load, save}};
     use crate::contract::{init};
 
     use cosmwasm_std::{Api, Env, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, Storage, to_binary};
 
-    use crate::{msg::{InitMsg}};
+    use crate::{msg::{InitMsg, LimitOrderState}};
 
 
     use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
@@ -100,10 +100,13 @@ mod tests {
         );
 
         let handle_msg = HandleMsg::Receive {
-            sender: HumanAddr("bob".to_string()), 
-            from: HumanAddr("token1address".to_string()), 
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("bob".to_string()), 
             amount: Uint128(5),
-            msg: to_binary(&HandleMsg::CreateLimitOrder {}).unwrap()
+            msg: to_binary(&HandleMsg::CreateLimitOrder {
+                side: LimitOrderSide::Bid,
+                price: Uint128(50)
+            }).unwrap()
         };
 
         let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -113,5 +116,15 @@ mod tests {
             "handle() failed: {}",
             handle_result.err().unwrap()
         ); 
+
+        let user_address = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
+
+        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address.as_slice()).unwrap();
+
+        assert_eq!(load_limit_order.clone().unwrap().side, LimitOrderSide::Bid);
+        assert_eq!(load_limit_order.clone().unwrap().status, LimitOrderStatus::Active);
+        assert_eq!(load_limit_order.clone().unwrap().price, Uint128(50));
+        assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(5),Uint128(0)]);
     }
 }

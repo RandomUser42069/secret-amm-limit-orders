@@ -2,7 +2,7 @@ use std::any::type_name;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use cosmwasm_std::{ReadonlyStorage, StdError, StdResult, Storage};
+use cosmwasm_std::{HumanAddr, ReadonlyStorage, StdError, StdResult, Storage, Uint128};
 
 use secret_toolkit::serialization::{Bincode2, Serde};
 
