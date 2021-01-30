@@ -1,9 +1,9 @@
 use cosmwasm_std::{Binary, CanonicalAddr, HumanAddr, Uint128};
 use schemars::JsonSchema;
-use secret_toolkit::utils::HandleCallback;
+use secret_toolkit::utils::{HandleCallback, Query};
 use serde::{Deserialize, Serialize};
 
-use crate::contract::BLOCK_SIZE;
+use crate::{contract::BLOCK_SIZE, order_queues::OrderSide};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
@@ -67,7 +67,7 @@ impl HandleCallback for FactoryHandleMsg {
 pub enum HandleMsg {
     Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
     CreateLimitOrder {
-        side: LimitOrderSide, // bid||ask
+        side: OrderSide, // bid||ask
         price: Uint128
     }
 }
@@ -76,7 +76,10 @@ pub enum HandleMsg {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetLimitOrders {}
+    GetLimitOrder {
+        user_address: HumanAddr,
+        user_viewkey: String
+    }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -85,14 +88,29 @@ pub enum QueryAnswer {
     LimitOrders {}
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct IsKeyValidResponse {
+    pub is_key_valid: IsKeyValid  
+} 
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct IsKeyValid {
+    pub is_valid: bool
+}
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FactoryQueryMsg {
+    IsKeyValid {
+        factory_key: String,
+        viewing_key: String,
+        address: HumanAddr
+    }
+}
+impl Query for FactoryQueryMsg {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
 // State
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, JsonSchema)]
-pub enum LimitOrderSide {
-    Bid,
-    Ask,
-}
-
-#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum LimitOrderStatus {
     Active,
     PartiallyFilled,
@@ -101,9 +119,9 @@ pub enum LimitOrderStatus {
     Completed
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LimitOrderState {
-    pub side: LimitOrderSide,
+    pub side: OrderSide,
     pub status: LimitOrderStatus,
     pub price: Uint128,
     pub balances: Vec<Uint128>,

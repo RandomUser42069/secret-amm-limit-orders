@@ -2,16 +2,16 @@ use core::time;
 
 use cosmwasm_std::{Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
-use secret_toolkit::{utils::HandleCallback};
+use secret_toolkit::{utils::{HandleCallback, Query}};
 
-use crate::{msg::{FactoryHandleMsg, HandleMsg, InitMsg, LimitOrderSide, LimitOrderState, LimitOrderStatus, QueryAnswer, QueryMsg, Snip20Msg}, state::{load, may_load, save}};
-
+use crate::{msg::{IsKeyValidResponse,FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, LimitOrderState, LimitOrderStatus, QueryAnswer, QueryMsg, Snip20Msg}, order_queues::OrderQueue, state::{load, may_load, save}};
+use crate::order_queues::OrderSide;
 pub const FACTORY_DATA: &[u8] = b"factory"; // address, hash, key
 pub const TOKEN1_DATA: &[u8] = b"token1"; // address, hash
 pub const TOKEN2_DATA: &[u8] = b"token2"; // address, hash
 pub const LIMIT_ORDERS: &[u8] = b"limitorders";
-pub const BID_ORDER_BOOK: &[u8] = b"bidorderbook";
-pub const ASK_ORDER_BOOK: &[u8] = b"askorderbook";
+pub const BID_ORDER_QUEUE: &[u8] = b"bidordequeue";
+pub const ASK_ORDER_QUEUE: &[u8] = b"askorderqueue";
 pub const BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -31,6 +31,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut token2_data = PrefixedStorage::new(TOKEN2_DATA, &mut deps.storage);
     save(&mut token2_data, b"address", &msg.token2_code_address)?;
     save(&mut token2_data, b"hash", &msg.token2_code_hash)?;
+
+    save(&mut deps.storage, BID_ORDER_QUEUE, &OrderQueue::new())?;
 
     // send register to snip20
     let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.contract_code_hash))?;
@@ -127,7 +129,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     env: Env,
     balances: Vec<Uint128>,
     from: HumanAddr,
-    side: LimitOrderSide,
+    side: OrderSide,
     price: Uint128
 ) -> StdResult<HandleResponse> {
 
@@ -145,7 +147,13 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     save(&mut key_store, user_address.as_slice(), &limit_order)?;
 
     // Update Order Book
-    
+    let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+    bid_order_book.insert(
+        user_address.clone(),
+        price,
+        env.block.time
+    );
+    save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
 
     Ok(HandleResponse::default())
 }
@@ -155,7 +163,41 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetLimitOrders {} => to_binary(&QueryAnswer::LimitOrders {
-        }),
+        QueryMsg::GetLimitOrder {user_address, user_viewkey} => to_binary(&get_limit_order(deps, user_address, user_viewkey)?)
+    }
+}
+
+fn get_limit_order<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    user_address: HumanAddr,
+    user_viewkey: String
+) -> StdResult<LimitOrderState> {
+    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
+    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
+    let factory_contract_hash: String = load(&factory_data, b"hash")?;
+    let factory_key: String = load(&factory_data, b"key")?;
+
+    let response: IsKeyValidResponse =
+    FactoryQueryMsg::IsKeyValid {
+        factory_key,
+        viewing_key: user_viewkey.clone(),
+        address: user_address.clone()
+    }.query(&deps.querier, factory_contract_hash, factory_contract_address)?;
+
+    if response.is_key_valid.is_valid {
+        let user_address = &deps.api.canonical_address(&user_address)?;
+        let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+        let limit_order_data:Option<LimitOrderState> = may_load(&limit_orders_data, user_address.as_slice())?;
+        if let Some(limit_order_data) = limit_order_data {
+            return Ok(limit_order_data)
+        } else {
+            return Err(StdError::generic_err(format!(
+                "No limit order found for this user."
+            ))); 
+        }
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Invalid address - viewkey pair!"
+        ))); 
     }
 }

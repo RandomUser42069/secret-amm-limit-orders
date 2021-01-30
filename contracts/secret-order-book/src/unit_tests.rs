@@ -5,7 +5,8 @@ mod tests {
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use schemars::_serde_json::to_string;
     use std::{any::Any};
-    use crate::{contract::{FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderSide, LimitOrderStatus}, state::{load, may_load, save}};
+    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderStatus}, order_queues::{OrderIndex, OrderQueue}, state::{load, may_load, save}};
+    use crate::order_queues::OrderSide;
     use crate::contract::{init};
 
     use cosmwasm_std::{Api, Env, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, Storage, to_binary};
@@ -83,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_receive_create_limit_order() {
+    fn test_handle_receive_create_n_limit_orders() {
         let (init_result, mut deps) = init_helper(
             HumanAddr("factoryaddress".to_string()),
             "factoryhash".to_string(),
@@ -99,12 +100,32 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        // Bob send
         let handle_msg = HandleMsg::Receive {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("bob".to_string()), 
+            amount: Uint128(4),
+            msg: to_binary(&HandleMsg::CreateLimitOrder {
+                side: OrderSide::Bid,
+                price: Uint128(40)
+            }).unwrap()
+        };
+
+        let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        // Alice send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("alice".to_string()), 
             amount: Uint128(5),
             msg: to_binary(&HandleMsg::CreateLimitOrder {
-                side: LimitOrderSide::Bid,
+                side: OrderSide::Bid,
                 price: Uint128(50)
             }).unwrap()
         };
@@ -117,14 +138,35 @@ mod tests {
             handle_result.err().unwrap()
         ); 
 
-        let user_address = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
+        // Check Bob limit order
+        let user_address_bob = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
 
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address.as_slice()).unwrap();
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_bob.as_slice()).unwrap();
 
-        assert_eq!(load_limit_order.clone().unwrap().side, LimitOrderSide::Bid);
+        assert_eq!(load_limit_order.clone().unwrap().side, OrderSide::Bid);
+        assert_eq!(load_limit_order.clone().unwrap().status, LimitOrderStatus::Active);
+        assert_eq!(load_limit_order.clone().unwrap().price, Uint128(40));
+        assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(4),Uint128(0)]);
+
+        // Check Alice limit order
+        let user_address_alice = &deps.api.canonical_address(&HumanAddr("alice".to_string())).unwrap();
+
+        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
+
+        assert_eq!(load_limit_order.clone().unwrap().side, OrderSide::Bid);
         assert_eq!(load_limit_order.clone().unwrap().status, LimitOrderStatus::Active);
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(50));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(5),Uint128(0)]);
+
+        // Check order queue
+        let mut bid_order_book:OrderQueue=load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        assert_eq!(bid_order_book.peek().unwrap().id, user_address_alice.clone());
+        assert_eq!(bid_order_book.peek().unwrap().price, Uint128(50));
+        assert_eq!(bid_order_book.pop().unwrap().id, user_address_alice.clone());
+        assert_eq!(bid_order_book.pop().unwrap().id, user_address_bob.clone());
+        assert_eq!(bid_order_book.peek(), None);
+        assert_eq!(bid_order_book.pop(), None);
     }
 }

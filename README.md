@@ -5,3 +5,7 @@
 Example:
 
 https://github.com/dgtony/orderbook-rs/blob/master/src
+
+TODO:
+* Integration tests with create limit order and authenticated querie limit orders!
+* Create unauthenticated query to peek the bid and ask order book queue
