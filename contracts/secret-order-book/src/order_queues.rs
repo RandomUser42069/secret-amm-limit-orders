@@ -1,8 +1,8 @@
-use cosmwasm_std::{CanonicalAddr, HumanAddr, Uint128};
+use cosmwasm_std::{CanonicalAddr, Uint128};
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::binary_heap};
+use std::{cmp::Ordering};
 use schemars::JsonSchema;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap};
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, JsonSchema)]
 pub enum OrderSide {

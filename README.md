@@ -7,5 +7,6 @@ Example:
 https://github.com/dgtony/orderbook-rs/blob/master/src
 
 TODO:
-* Integration tests with create limit order and authenticated querie limit orders!
-* Create unauthenticated query to peek the bid and ask order book queue
+* Create Factory method to be called by secret order contracts only that checks a triggerer and the VK auth
+* Resolve the problem with the floating point on the secretdev 
+* Integrations tests: Create Limit Order, Query Limit Order, Withdraw Limit Order and Query Order Book Peek

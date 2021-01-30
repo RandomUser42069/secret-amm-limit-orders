@@ -131,3 +131,8 @@ STORE_TX_HASH=$(
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
 echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
+
+################################################################
+## Secret Order Book - Query Limit Order
+################################################################
+secretcli q compute query $(echo "$secret_order_book_address" | tr -d '"') '{"get_limit_order": {"user_address": "'$deployer_address_b'", "user_viewkey": '$user_factory_vk_b'}}'

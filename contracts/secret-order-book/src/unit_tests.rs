@@ -1,20 +1,16 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use cosmwasm_std::{Binary, Extern, HumanAddr, StdResult, Uint128, testing::*};
-    use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
-    use schemars::_serde_json::to_string;
-    use std::{any::Any};
-    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderStatus}, order_queues::{OrderIndex, OrderQueue}, state::{load, may_load, save}};
+    use cosmwasm_std::{Extern, HumanAddr, StdResult, Uint128, testing::*};
+    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderStatus}, order_queues::{OrderQueue}, state::{load, may_load}};
     use crate::order_queues::OrderSide;
     use crate::contract::{init};
 
-    use cosmwasm_std::{Api, Env, HandleResponse, HandleResult, InitResponse, Querier, QueryResult, StdError, Storage, to_binary};
+    use cosmwasm_std::{Api, InitResponse, to_binary};
 
     use crate::{msg::{InitMsg, LimitOrderState}};
 
 
-    use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
+    use cosmwasm_storage::{ReadonlyPrefixedStorage};
 
     fn init_helper(
         factory_address: HumanAddr,
