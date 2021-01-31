@@ -2,9 +2,10 @@ use cosmwasm_std::{Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAdd
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use serde::__private::de::UntaggedUnitVisitor;
-use crate::{msg::{FactoryHandleMsg, FactoryQueryMsg, GetOrderBookPeekResponse, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, LimitOrderStatus, QueryMsg, Snip20Msg}, order_queues::OrderQueue, state::{load, may_load, remove, save}};
-use crate::order_queues::OrderSide;
+use crate::{msg::{FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, 
+    LimitOrderState, 
+    QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
+use crate::order_queues::OrderQueue;
 pub const FACTORY_DATA: &[u8] = b"factory"; // address, hash, key
 pub const TOKEN1_DATA: &[u8] = b"token1"; // address, hash
 pub const TOKEN2_DATA: &[u8] = b"token2"; // address, hash
@@ -119,8 +120,8 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
         )));
     }
     
-    if let HandleMsg::CreateLimitOrder {side, price} = msg.clone() {
-        return create_limit_order(deps, env, balances, order_token_index, order_token_init_quant,from, side, price)
+    if let HandleMsg::CreateLimitOrder {is_bid, price} = msg.clone() {
+        return create_limit_order(deps, env, balances, order_token_index, order_token_init_quant,from, is_bid, price)
     } else {
         return Err(StdError::generic_err(format!(
             "Receive handler not found!"
@@ -135,7 +136,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     order_token_index: i8,
     order_token_init_quant: Uint128,
     from: HumanAddr,
-    side: OrderSide,
+    is_bid: bool,
     price: Uint128
 ) -> StdResult<HandleResponse> {
 
@@ -143,8 +144,8 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     let user_address = &deps.api.canonical_address(&from)?;
 
     let limit_order = LimitOrderState {
-        side,
-        status: LimitOrderStatus::Active,
+        is_bid,
+        status: "Active".to_string(),
         price,
         order_token_index,
         order_token_init_quant,
@@ -227,7 +228,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetLimitOrder {user_address, user_viewkey} => to_binary(&get_limit_order(deps, user_address, user_viewkey)?),
-        QueryMsg::GetOrderBookPeek {user_address, user_viewkey} => to_binary(&get_order_book_peek(deps, user_address, user_viewkey)?)
+        QueryMsg::CheckOrderBookTrigger {user_address, user_viewkey} => to_binary(&check_order_book_trigger(deps, user_address, user_viewkey)?),
+        _ => Err(StdError::generic_err("Handler not found!"))
     }
 }
 
@@ -266,11 +268,11 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
     }
 }
 
-fn get_order_book_peek<S: Storage, A: Api, Q: Querier>(
+fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     user_address: HumanAddr,
     user_viewkey: String
-) -> StdResult<GetOrderBookPeekResponse> {
+) -> StdResult<bool> {
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
     let factory_contract_hash: String = load(&factory_data, b"hash")?;
@@ -289,14 +291,14 @@ fn get_order_book_peek<S: Storage, A: Api, Q: Querier>(
         let mut bid_price: Option<Uint128> = None;
         let mut ask_price: Option<Uint128> = None;
 
-        if let Some(bid_order_book_peek) = bid_order_book.peek() {
-            bid_price = Some(bid_order_book_peek.price);
-        }
+        // Peek order books for the price and check the AMM price for this asset
+        // Respond true if needs to trigger and false if not
 
-        return Ok(GetOrderBookPeekResponse{
-            bid_price,
-            ask_price
-        })
+        //if let Some(bid_order_book_peek) = bid_order_book.peek() {
+        //    bid_price = Some(bid_order_book_peek.price);
+        //}
+
+        return Ok(true)
     } else {
         return Err(StdError::generic_err(format!(
             "Invalid address - viewkey pair!"

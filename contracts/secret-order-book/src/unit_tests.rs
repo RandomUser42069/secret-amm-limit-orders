@@ -1,13 +1,15 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{Extern, HumanAddr, StdResult, Uint128, testing::*};
-    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg, LimitOrderStatus}, order_queues::{OrderQueue}, state::{load, may_load}};
-    use crate::order_queues::OrderSide;
+    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{HandleMsg,
+    }, state::{load, may_load}};
     use crate::contract::{init};
-
+    use crate::order_queues::OrderQueue;
     use cosmwasm_std::{Api, InitResponse, to_binary};
 
-    use crate::{msg::{InitMsg, LimitOrderState}};
+    use crate::{msg::{InitMsg, 
+        LimitOrderState
+    }};
 
 
     use cosmwasm_storage::{ReadonlyPrefixedStorage};
@@ -102,7 +104,7 @@ mod tests {
             from: HumanAddr("bob".to_string()), 
             amount: Uint128(4),
             msg: to_binary(&HandleMsg::CreateLimitOrder {
-                side: OrderSide::Bid,
+                is_bid: true,
                 price: Uint128(40)
             }).unwrap()
         };
@@ -121,7 +123,7 @@ mod tests {
             from: HumanAddr("alice".to_string()), 
             amount: Uint128(5),
             msg: to_binary(&HandleMsg::CreateLimitOrder {
-                side: OrderSide::Bid,
+                is_bid: true,
                 price: Uint128(50)
             }).unwrap()
         };
@@ -140,8 +142,8 @@ mod tests {
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
         let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_bob.as_slice()).unwrap();
 
-        assert_eq!(load_limit_order.clone().unwrap().side, OrderSide::Bid);
-        assert_eq!(load_limit_order.clone().unwrap().status, LimitOrderStatus::Active);
+        assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
+        assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(40));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(4),Uint128(0)]);
 
@@ -151,8 +153,8 @@ mod tests {
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
         let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
 
-        assert_eq!(load_limit_order.clone().unwrap().side, OrderSide::Bid);
-        assert_eq!(load_limit_order.clone().unwrap().status, LimitOrderStatus::Active);
+        assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
+        assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(50));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(5),Uint128(0)]);
 

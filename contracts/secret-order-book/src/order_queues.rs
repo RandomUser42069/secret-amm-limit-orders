@@ -4,11 +4,6 @@ use std::{cmp::Ordering};
 use schemars::JsonSchema;
 use std::collections::{BinaryHeap};
 
-#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, JsonSchema)]
-pub enum OrderSide {
-    Bid,
-    Ask,
-}
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct OrderIndex {
     pub id: CanonicalAddr,

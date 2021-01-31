@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use secret_toolkit::utils::{HandleCallback, Query};
 use serde::{Deserialize, Serialize};
 
-use crate::{contract::BLOCK_SIZE, order_queues::OrderSide};
+use crate::{contract::BLOCK_SIZE};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
@@ -67,7 +67,7 @@ impl HandleCallback for FactoryHandleMsg {
 pub enum HandleMsg {
     Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
     CreateLimitOrder {
-        side: OrderSide, // bid||ask
+        is_bid: bool, // bid||ask
         price: Uint128
     },
     WithdrawLimitOrder {}
@@ -81,7 +81,7 @@ pub enum QueryMsg {
         user_address: HumanAddr,
         user_viewkey: String
     },
-    GetOrderBookPeek {
+    CheckOrderBookTrigger {
         user_address: HumanAddr,
         user_viewkey: String
     }
@@ -92,12 +92,6 @@ pub enum QueryMsg {
 pub enum QueryAnswer {
     LimitOrders {}
 }
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct GetOrderBookPeekResponse {
-    pub bid_price: Option<Uint128>,
-    pub ask_price: Option<Uint128>
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct IsKeyValidResponse {
     pub is_key_valid: IsKeyValid  
@@ -119,18 +113,12 @@ pub enum FactoryQueryMsg {
 impl Query for FactoryQueryMsg {
     const BLOCK_SIZE: usize = BLOCK_SIZE;
 }
-// State
-#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, JsonSchema)]
-pub enum LimitOrderStatus {
-    Active,
-    PartiallyFilled,
-    Filled
-}
 
+// State
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LimitOrderState {
-    pub side: OrderSide,
-    pub status: LimitOrderStatus,
+    pub is_bid: bool,
+    pub status: String, //Active, PartiallyFilled, Filled
     pub price: Uint128,
     pub order_token_index: i8,
     pub order_token_init_quant: Uint128,

@@ -6,14 +6,14 @@ read toBuild
 if [ "$toBuild" != "${toBuild#[Yy]}" ] ;then
     cd contracts/factory
     #cargo clean
-    RUST_BACKTRACE=1 cargo unit-test
-    rm -f ./contract.wasm ./contract.wasm.gz
-    cargo wasm
-    cargo schema
-    docker run --rm -v $PWD:/contract \
-    --mount type=volume,source=factory_cache,target=/code/target \
-    --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-    enigmampc/secret-contract-optimizer
+    #RUST_BACKTRACE=1 cargo unit-test
+    #rm -f ./contract.wasm ./contract.wasm.gz
+    #cargo wasm
+    #cargo schema
+    #docker run --rm -v $PWD:/contract \
+    #--mount type=volume,source=factory_cache,target=/code/target \
+    #--mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+    #enigmampc/secret-contract-optimizer
 
     cd ../secret-order-book
     #cargo clean
@@ -126,7 +126,7 @@ user_factory_vk_b=$(docker exec $docker_name secretcli query compute tx $STORE_T
 ## Secret Order Book - Create Limit Order
 ################################################################
 STORE_TX_HASH=$(
-  secretcli tx compute execute $(echo "$token1_contract_address" | tr -d '"') '{"send":{"recipient": "'$secret_order_book_address'", "amount": "1000000", "msg": "'"$(base64 -w 0 <<<'{"create_limit_order": {}}')"'"}}' --from $deployer_name_b -y --gas 1500000 -b block |
+  secretcli tx compute execute $(echo "$token1_contract_address" | tr -d '"') '{"send":{"recipient": "'$secret_order_book_address'", "amount": "1000000", "msg": "'"$(base64 -w 0 <<<'{"create_limit_order": {"is_bid": true, "price": "123"}}')"'"}}' --from $deployer_name_b -y --gas 1500000 -b block |
   jq -r .txhash
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
@@ -136,3 +136,19 @@ echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
 ## Secret Order Book - Query Limit Order
 ################################################################
 secretcli q compute query $(echo "$secret_order_book_address" | tr -d '"') '{"get_limit_order": {"user_address": "'$deployer_address_b'", "user_viewkey": '$user_factory_vk_b'}}'
+
+################################################################
+## Secret Order Book - Widthdraw Limit Order
+################################################################
+STORE_TX_HASH=$(
+  secretcli tx compute execute $(echo "$secret_order_book_address" | tr -d '"') '{"withdraw_limit_order": {}}' --from $deployer_name_b -y --gas 1500000 -b block |
+  jq -r .txhash
+)
+wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
+echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
+
+################################################################
+## Secret Order Book - Query Check Order Book Trigger
+################################################################
+secretcli q compute query $(echo "$secret_order_book_address" | tr -d '"') '{"check_order_book_trigger": {"user_address": "'$deployer_address_b'", "user_viewkey": '$user_factory_vk_b'}}'
+
