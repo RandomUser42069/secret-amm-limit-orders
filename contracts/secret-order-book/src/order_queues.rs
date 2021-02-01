@@ -8,16 +8,23 @@ use std::collections::{BinaryHeap};
 pub struct OrderIndex {
     pub id: CanonicalAddr,
     pub price: Uint128,
-    pub timestamp: u64
+    pub timestamp: u64,
+    pub is_bid: bool,
 }
 
 // Arrange at first by price and after that by timestamp
 impl Ord for OrderIndex {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.price < other.price {
-            Ordering::Less
+            match self.is_bid {
+                true => Ordering::Less,
+                false => Ordering::Greater,
+            }
         } else if self.price > other.price {
-            Ordering::Greater
+            match self.is_bid {
+                true => Ordering::Greater,
+                false => Ordering::Less,
+            }
         } else {
             // FIFO
             other.timestamp.cmp(&self.timestamp)
@@ -44,13 +51,15 @@ impl PartialEq for OrderIndex {
 impl Eq for OrderIndex {}
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct OrderQueue {
-    idx_queue: Option<BinaryHeap<OrderIndex>>
+    idx_queue: Option<BinaryHeap<OrderIndex>>,
+    is_bid: bool
 }
 
 impl OrderQueue {
-    pub fn new() -> Self {
+    pub fn new(is_bid: bool) -> Self {
         OrderQueue {
-            idx_queue: Some(BinaryHeap::new())
+            idx_queue: Some(BinaryHeap::new()),
+            is_bid
         }
     }
 
@@ -58,7 +67,8 @@ impl OrderQueue {
         self.idx_queue.as_mut().unwrap().push(OrderIndex {
             id,
             price,
-            timestamp
+            timestamp,
+            is_bid: self.is_bid
         });
         true
     }

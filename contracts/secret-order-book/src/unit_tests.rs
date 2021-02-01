@@ -166,5 +166,20 @@ mod tests {
         assert_eq!(bid_order_book.pop().unwrap().id, user_address_bob.clone());
         assert_eq!(bid_order_book.peek(), None);
         assert_eq!(bid_order_book.pop(), None);
+
+        // Trigerer send
+        let handle_msg = HandleMsg::TriggerLimitOrders {
+            test_amm_price: Uint128(50)
+        };
+        let handle_result = handle(&mut deps, mock_env("trigerer", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
+        assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(5)]);
     }
 }
