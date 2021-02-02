@@ -106,7 +106,7 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
     let load_token2_address: HumanAddr = load(&token2_data, b"address")?;
 
     let mut balances = vec![Uint128(0), Uint128(0)];
-    let order_token_index: usize;
+    let order_token_index: i8;
     let order_token_init_quant: Uint128 = amount;
 
     if load_token1_address == env.message.sender {
@@ -135,7 +135,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     balances: Vec<Uint128>,
-    order_token_index: usize,
+    order_token_index: i8,
     order_token_init_quant: Uint128,
     from: HumanAddr,
     is_bid: bool,
@@ -283,7 +283,7 @@ pub fn execute_trigger<S: Storage, A: Api, Q: Querier>(
             let triggered_order = order_book.pop().unwrap();
             let limit_order_data:Option<LimitOrderState> = may_load(&limit_orders_data, triggered_order.id.as_slice())?;
             if limit_order_data != None {
-                order_total_quantity = order_total_quantity + limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index];
+                order_total_quantity = order_total_quantity + limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize];
                 triggered_limit_orders.push(triggered_order.id);
             }
         } else {

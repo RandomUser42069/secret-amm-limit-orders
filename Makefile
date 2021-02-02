@@ -13,3 +13,12 @@ snip20: # CTRL+C to stop
 .PHONY: factory
 factory: # CTRL+C to stop
 	bash ./tests/deployFactory.sh
+
+.PHONY: deploy-test-factory
+deploy-test-factory: # CTRL+C to stop
+	bash ./deploy/factory-testnet.sh
+
+.PHONY: deploy-test-order
+deploy-test-order: # CTRL+C to stop	
+	bash ./deploy/secret-order-book-testnet.sh
+
