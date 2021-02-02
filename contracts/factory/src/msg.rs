@@ -14,10 +14,8 @@ pub struct SecretOrderBookContractInitMsg {
     pub factory_address: HumanAddr,
     pub factory_hash: String,
     pub factory_key: String,
-    pub token1_code_address: HumanAddr,
-    pub token1_code_hash: String,
-    pub token2_code_address: HumanAddr,
-    pub token2_code_hash: String,
+    pub token1_info: AssetInfo,
+    pub token2_info: AssetInfo,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -26,16 +24,14 @@ pub enum HandleMsg {
     CreateViewingKey {entropy: String},
     ChangeSecretOrderBookContractCodeId {code_id: u64, code_hash: String},
     NewSecretOrderBookInstanciate {
-        token1_code_address: HumanAddr,
-        token1_code_hash: String,
-        token2_code_address: HumanAddr,
-        token2_code_hash: String,
+        token1_info: AssetInfo,
+        token2_info: AssetInfo,
     },
     InitCallBackFromSecretOrderBookToFactory {
         auth_key: String, 
         contract_address: HumanAddr,
-        token1_address: HumanAddr,
-        token2_address: HumanAddr,
+        token1_info: AssetInfo,
+        token2_info: AssetInfo,
     }
 }
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -88,4 +84,25 @@ pub enum QueryAnswer {
     IsKeyValid { is_valid: bool },
     SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
     SecretOrderBooks {secret_order_books: Vec<HumanAddr>}
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetInfo {
+    Token {
+        contract_addr: HumanAddr,
+        token_code_hash: String
+    },
+    NativeToken {
+        denom: String,
+    },
+}
+
+impl AssetInfo {
+    pub fn is_native_token(&self) -> bool {
+        match self {
+            AssetInfo::NativeToken { .. } => true,
+            AssetInfo::Token { .. } => false,
+        }
+    }
 }

@@ -1,6 +1,6 @@
 use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, to_binary};
 
-use crate::{msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, SecretOrderBookContractInitMsg, ResponseStatus::Success}, rand::sha_256};
+use crate::{msg::{AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContractInitMsg}, rand::sha_256};
 use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
@@ -48,17 +48,15 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::CreateViewingKey { entropy } => try_create_key(deps, env, &entropy),
         HandleMsg::ChangeSecretOrderBookContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
         HandleMsg::NewSecretOrderBookInstanciate {
-            token1_code_address,
-            token1_code_hash,
-            token2_code_address,
-            token2_code_hash,
-        } => try_secret_order_book_instanciate(deps, env, &token1_code_address, &token1_code_hash, &token2_code_address, &token2_code_hash),
+            token1_info,
+            token2_info
+        } => try_secret_order_book_instanciate(deps, env, &token1_info, &token2_info),
         HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key, 
             contract_address,  
-            token1_address, 
-            token2_address
-        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, contract_address, token1_address, token2_address)
+            token1_info, 
+            token2_info
+        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, contract_address, token1_info, token2_info)
     }
 }
 
@@ -105,10 +103,8 @@ fn try_change_secret_order_book_contract_code_id<S: Storage, A: Api, Q: Querier>
 fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    token1_code_address: &HumanAddr,
-    token1_code_hash: &String,
-    token2_code_address: &HumanAddr,
-    token2_code_hash: &String,
+    token1_info: &AssetInfo,
+    token2_info: &AssetInfo
 ) -> HandleResult {  
     let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
     let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
@@ -118,22 +114,33 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
         factory_hash: env.contract_code_hash,
         factory_address: env.contract.address,
         factory_key,
-        token1_code_address: token1_code_address.to_owned(),
-        token1_code_hash: token1_code_hash.to_owned(),
-        token2_code_address: token2_code_address.to_owned(),
-        token2_code_hash: token2_code_hash.to_owned()
+        token1_info: token1_info.clone(),
+        token2_info: token2_info.clone()
     };
     impl InitCallback for SecretOrderBookContractInitMsg {
         const BLOCK_SIZE: usize = BLOCK_SIZE;
     }
 
+    let token1_symbol:String;
+    let token2_symbol:String;
     //query tokens info and get symbols from Addresses
-    let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_code_hash.to_owned(), token1_code_address.to_owned());
-    let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_code_hash.to_owned(), token2_code_address.to_owned());
-
+    match token1_info {
+        AssetInfo::NativeToken { .. } => token1_symbol="SCRT".to_string(),
+        AssetInfo::Token { contract_addr, token_code_hash } => {
+            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token_code_hash.to_owned(), contract_addr.to_owned());
+            token1_symbol = response_token1.unwrap().symbol;
+        }
+    }
+    match token2_info {
+        AssetInfo::NativeToken { .. } => token2_symbol="SCRT".to_string(),
+        AssetInfo::Token { contract_addr, token_code_hash } => {
+            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token_code_hash.to_owned(), contract_addr.to_owned());
+            token2_symbol = response_token2.unwrap().symbol;
+        }
+    }
     //TODO: Deal with duplicated token symbols
     let cosmosmsg =
-        initmsg.to_cosmos_msg(format!("({}) Secret Order Book - {}/{}",secret_order_book_contract_code_id,response_token1.unwrap().symbol,response_token2.unwrap().symbol).to_string(), secret_order_book_contract_code_id, secret_order_book_contract_code_hash, None)?;
+        initmsg.to_cosmos_msg(format!("({}) Secret Order Book - {}/{}",secret_order_book_contract_code_id,token1_symbol,token2_symbol).to_string(), secret_order_book_contract_code_id, secret_order_book_contract_code_hash, None)?;
 
     Ok(HandleResponse {
         messages: vec![cosmosmsg],
@@ -150,8 +157,8 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     env: Env,
     auth_key: String,
     contract_address: HumanAddr,
-    token1_address: HumanAddr,
-    token2_address: HumanAddr,
+    token1_info: AssetInfo,
+    token2_info: AssetInfo,
 ) -> HandleResult {   
     let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
     let input_key: String = auth_key;
@@ -162,8 +169,17 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
         ));
     }
 
-    let token1_address_raw = &deps.api.canonical_address(&token1_address)?;
-    let token2_address_raw = &deps.api.canonical_address(&token2_address)?;
+    let token1_address_raw: CanonicalAddr;
+    let token2_address_raw: CanonicalAddr;
+
+    match token1_info {
+        AssetInfo::NativeToken { .. } => token1_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
+        AssetInfo::Token { contract_addr, .. } => {token1_address_raw = deps.api.canonical_address(&contract_addr)?}
+    }
+    match token2_info {
+        AssetInfo::NativeToken { .. } => token2_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
+        AssetInfo::Token { contract_addr, .. } => {token2_address_raw = deps.api.canonical_address(&contract_addr)?}
+    }
 
     let mut token_secret_order_books = PrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &mut deps.storage);
     let load_token1_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token1_address_raw.as_slice())?;
