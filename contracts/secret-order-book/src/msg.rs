@@ -10,10 +10,8 @@ pub struct InitMsg {
     pub factory_address: HumanAddr,
     pub factory_hash: String,
     pub factory_key: String,
-    pub token1_code_address: HumanAddr,
-    pub token1_code_hash: String,
-    pub token2_code_address: HumanAddr,
-    pub token2_code_hash: String,
+    pub token1_info: AssetInfo,
+    pub token2_info: AssetInfo,
 }
 
 // Messages sent to SNIP-20 contracts
@@ -53,8 +51,8 @@ pub enum FactoryHandleMsg {
     InitCallBackFromSecretOrderBookToFactory  {
         auth_key: String,
         contract_address: HumanAddr,
-        token1_address: HumanAddr,
-        token2_address: HumanAddr,
+        token1_info: AssetInfo,
+        token2_info: AssetInfo,
     },
 }
 
@@ -66,8 +64,12 @@ impl HandleCallback for FactoryHandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
+    ReceiveNativeToken {
+        is_bid: bool,
+        price: Uint128
+    },
     CreateLimitOrder {
-        is_bid: bool, // bid||ask
+        is_bid: bool,
         price: Uint128
     },
     WithdrawLimitOrder {},
@@ -127,4 +129,23 @@ pub struct LimitOrderState {
     pub order_token_init_quant: Uint128,
     pub balances: Vec<Uint128>,
     pub timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct AssetInfo {
+    pub is_native_token: bool,
+    pub token: Option<Token>,
+    pub native_token: Option<NativeToken>
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct Token {
+    pub contract_addr: HumanAddr,
+    pub token_code_hash: String
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct NativeToken {
+    pub denom: String,
 }

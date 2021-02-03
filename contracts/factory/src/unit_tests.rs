@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{contract::{PREFIX_VIEW_KEY, query}, msg::{AssetInfo, ResponseStatus}};
+    use crate::{contract::{PREFIX_VIEW_KEY, query}, msg::{AssetInfo, NativeToken, ResponseStatus, Token}};
     use cosmwasm_std::{Extern, HumanAddr, StdResult, testing::*};
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use schemars::_serde_json::to_string;
@@ -218,8 +218,16 @@ mod tests {
         let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
             contract_address: HumanAddr("contract1".to_string()),
-            token1_info: AssetInfo::Token{contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()},
-            token2_info: AssetInfo::NativeToken{denom:"uscrt".to_string()},
+            token1_info: AssetInfo {
+                is_native_token: false,
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                native_token: None
+            },
+            token2_info: AssetInfo {
+                is_native_token: true,
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                native_token: Some(NativeToken{denom:"uscrt".to_string()})
+            }
         };
     
         let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
@@ -232,8 +240,16 @@ mod tests {
         let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
             contract_address: HumanAddr("contract2".to_string()),
-            token1_info: AssetInfo::Token{contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()},
-            token2_info: AssetInfo::Token{contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()},
+            token1_info: AssetInfo {
+                is_native_token: false,
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                native_token: None
+            },
+            token2_info: AssetInfo {
+                is_native_token: false,
+                token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+                native_token: None
+            },
         };
     
         let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());

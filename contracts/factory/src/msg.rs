@@ -88,21 +88,19 @@ pub enum QueryAnswer {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AssetInfo {
-    Token {
-        contract_addr: HumanAddr,
-        token_code_hash: String
-    },
-    NativeToken {
-        denom: String,
-    },
+pub struct AssetInfo {
+    pub is_native_token: bool,
+    pub token: Option<Token>,
+    pub native_token: Option<NativeToken>
 }
-
-impl AssetInfo {
-    pub fn is_native_token(&self) -> bool {
-        match self {
-            AssetInfo::NativeToken { .. } => true,
-            AssetInfo::Token { .. } => false,
-        }
-    }
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct Token {
+    pub contract_addr: HumanAddr,
+    pub token_code_hash: String
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct NativeToken {
+    pub denom: String,
 }

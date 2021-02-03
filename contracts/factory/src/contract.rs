@@ -124,17 +124,17 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     let token1_symbol:String;
     let token2_symbol:String;
     //query tokens info and get symbols from Addresses
-    match token1_info {
-        AssetInfo::NativeToken { .. } => token1_symbol="SCRT".to_string(),
-        AssetInfo::Token { contract_addr, token_code_hash } => {
-            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token_code_hash.to_owned(), contract_addr.to_owned());
+    match token1_info.is_native_token {
+        true => token1_symbol="SCRT".to_string(),
+        false => {
+            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.token.to_owned().unwrap().token_code_hash, token1_info.token.to_owned().unwrap().contract_addr);
             token1_symbol = response_token1.unwrap().symbol;
         }
     }
-    match token2_info {
-        AssetInfo::NativeToken { .. } => token2_symbol="SCRT".to_string(),
-        AssetInfo::Token { contract_addr, token_code_hash } => {
-            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token_code_hash.to_owned(), contract_addr.to_owned());
+    match token2_info.is_native_token {
+        true => token2_symbol="SCRT".to_string(),
+        false => {
+            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.token.to_owned().unwrap().token_code_hash, token2_info.token.to_owned().unwrap().contract_addr);
             token2_symbol = response_token2.unwrap().symbol;
         }
     }
@@ -172,13 +172,13 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     let token1_address_raw: CanonicalAddr;
     let token2_address_raw: CanonicalAddr;
 
-    match token1_info {
-        AssetInfo::NativeToken { .. } => token1_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
-        AssetInfo::Token { contract_addr, .. } => {token1_address_raw = deps.api.canonical_address(&contract_addr)?}
+    match token1_info.is_native_token {
+        true => token1_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
+        false => {token1_address_raw = deps.api.canonical_address(&token1_info.token.unwrap().contract_addr)?}
     }
-    match token2_info {
-        AssetInfo::NativeToken { .. } => token2_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
-        AssetInfo::Token { contract_addr, .. } => {token2_address_raw = deps.api.canonical_address(&contract_addr)?}
+    match token2_info.is_native_token {
+        true => token2_address_raw = deps.api.canonical_address(&HumanAddr("scrt".to_string()))?,
+        false => {token2_address_raw = deps.api.canonical_address(&token2_info.token.unwrap().contract_addr)?}
     }
 
     let mut token_secret_order_books = PrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &mut deps.storage);

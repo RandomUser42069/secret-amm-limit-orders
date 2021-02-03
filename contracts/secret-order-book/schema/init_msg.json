@@ -6,10 +6,8 @@
     "factory_address",
     "factory_hash",
     "factory_key",
-    "token1_code_address",
-    "token1_code_hash",
-    "token2_code_address",
-    "token2_code_hash"
+    "token1_info",
+    "token2_info"
   ],
   "properties": {
     "factory_address": {
@@ -21,22 +19,73 @@
     "factory_key": {
       "type": "string"
     },
-    "token1_code_address": {
-      "$ref": "#/definitions/HumanAddr"
+    "token1_info": {
+      "$ref": "#/definitions/AssetInfo"
     },
-    "token1_code_hash": {
-      "type": "string"
-    },
-    "token2_code_address": {
-      "$ref": "#/definitions/HumanAddr"
-    },
-    "token2_code_hash": {
-      "type": "string"
+    "token2_info": {
+      "$ref": "#/definitions/AssetInfo"
     }
   },
   "definitions": {
+    "AssetInfo": {
+      "type": "object",
+      "required": [
+        "is_native_token"
+      ],
+      "properties": {
+        "is_native_token": {
+          "type": "boolean"
+        },
+        "native_token": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NativeToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "token": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Token"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "HumanAddr": {
       "type": "string"
+    },
+    "NativeToken": {
+      "type": "object",
+      "required": [
+        "denom"
+      ],
+      "properties": {
+        "denom": {
+          "type": "string"
+        }
+      }
+    },
+    "Token": {
+      "type": "object",
+      "required": [
+        "contract_addr",
+        "token_code_hash"
+      ],
+      "properties": {
+        "contract_addr": {
+          "$ref": "#/definitions/HumanAddr"
+        },
+        "token_code_hash": {
+          "type": "string"
+        }
+      }
     }
   }
 }
