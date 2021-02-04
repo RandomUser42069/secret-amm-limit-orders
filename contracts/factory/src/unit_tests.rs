@@ -20,6 +20,8 @@ mod tests {
         entropy: String,
         secret_order_book_code_id: u64,
         secret_order_book_code_hash: String,
+        amm_factory_contract_address: HumanAddr,
+        amm_factory_contract_hash: String
     ) -> (
         StdResult<InitResponse>,
         Extern<MockStorage, MockApi, MockQuerier>,
@@ -31,6 +33,8 @@ mod tests {
             entropy,
             secret_order_book_code_id,
             secret_order_book_code_hash,
+            amm_factory_contract_address,
+            amm_factory_contract_hash,
         };
     
         (init(&mut deps, env, init_msg), deps)
@@ -41,7 +45,9 @@ mod tests {
         let (init_result, deps) = init_helper(
             "123124".to_string(),
             10,
-            "DFADFA123123".to_string()
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert_eq!(init_result.unwrap(), InitResponse::default());
         
@@ -59,7 +65,9 @@ mod tests {
         let (init_result, mut deps) = init_helper(
             "123124".to_string(),
             10,
-            "DFADFA123123".to_string()
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),
@@ -154,7 +162,9 @@ mod tests {
         let (init_result, mut deps) = init_helper(
             "123124".to_string(),
             10,
-            "DFADFA123123".to_string()
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),
@@ -207,7 +217,9 @@ mod tests {
         let (init_result, mut deps) = init_helper(
             "123124".to_string(),
             10,
-            "DFADFA123123".to_string()
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),
@@ -225,7 +237,7 @@ mod tests {
             },
             token2_info: AssetInfo {
                 is_native_token: true,
-                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             }
         };
@@ -260,7 +272,7 @@ mod tests {
         ); 
         
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: HumanAddr("token1".to_string())
+            token_address: Some(HumanAddr("token1".to_string()))
         };
     
         let query_result = query(&deps, query_msg);
@@ -281,7 +293,7 @@ mod tests {
         }
         
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: HumanAddr("scrt".to_string())
+            token_address: None
         };
     
         let query_result = query(&deps, query_msg);
@@ -301,7 +313,7 @@ mod tests {
         }
     
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: HumanAddr("token3".to_string())
+            token_address: Some(HumanAddr("token3".to_string()))
         };
     
         let query_result = query(&deps, query_msg);

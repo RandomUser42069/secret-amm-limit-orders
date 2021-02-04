@@ -3,6 +3,8 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
+    "amm_factory_contract_address",
+    "amm_factory_contract_hash",
     "factory_address",
     "factory_hash",
     "factory_key",
@@ -10,6 +12,12 @@
     "token2_info"
   ],
   "properties": {
+    "amm_factory_contract_address": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "amm_factory_contract_hash": {
+      "type": "string"
+    },
     "factory_address": {
       "$ref": "#/definitions/HumanAddr"
     },

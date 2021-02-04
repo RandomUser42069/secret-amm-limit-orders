@@ -7,6 +7,8 @@ pub struct InitMsg {
     pub entropy: String,
     pub secret_order_book_code_id: u64,
     pub secret_order_book_code_hash: String,
+    pub amm_factory_contract_address: HumanAddr,
+    pub amm_factory_contract_hash: String
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -16,6 +18,8 @@ pub struct SecretOrderBookContractInitMsg {
     pub factory_key: String,
     pub token1_info: AssetInfo,
     pub token2_info: AssetInfo,
+    pub amm_factory_contract_address: HumanAddr,
+    pub amm_factory_contract_hash: String
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -71,7 +75,7 @@ pub enum QueryMsg {
     },
     SecretOrderBookContractCodeId {},
     SecretOrderBooks {
-        token_address: HumanAddr,
+        token_address: Option<HumanAddr>,
     }
 }
 

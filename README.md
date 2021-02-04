@@ -4,9 +4,6 @@
 
 TODO:
 * Study AMM contract and how to interact with it
-    * Alter my code to support the native token SCRT!
-    * When instanciating a new limit order pair, need to query the AMM factory for that pair info so I store that on the state
-        * Pair ou Pairs
     * On my query check to trigger, query AMM pair contract to get the current price
         * '{"simulation":{"offer_asset": {"info":{"native_token":{"denom":"uscrt"}},"amount":"10"}}}'
         * '{"reverse_simulation":{"ask_asset": {"info":{"native_token":{"denom":"uscrt"}},"amount":"10"}}}'
@@ -24,8 +21,10 @@ TODO:
 
 ## Testnet AMM
 * factory_address => secret190q0suu7yxjzx4uf92kqjzuuqzm0xkk2az0gf7
+* factory_hash => 0xceb28424c1877723ec997a990e815a1d15ec6b528e0d6ced708bd1eee8e11797
 * pair_address => secret104s4dm08q2hr8ruhy9qavcgyssepskfn85x534
-* token_address => secret1j50u6hvume8pkq2c7lcmktrzd7lrymxhujrnax
+* eth token_address => secret1j50u6hvume8pkq2c7lcmktrzd7lrymxhujrnax
+* eth token hash => 0x78bdf9cdd7538fc96dfb18372635a20162243e49ca9bcd4bd2aff6300d2bc5e2
 ## References
 * [Secret Contracts Template](https://github.com/enigmampc/secret-template)
 * [secretSCRT SNIP20 Token Contract](https://github.com/enigmampc/secretSCRT)

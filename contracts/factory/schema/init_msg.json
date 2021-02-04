@@ -3,11 +3,19 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
+    "amm_factory_contract_address",
+    "amm_factory_contract_hash",
     "entropy",
     "secret_order_book_code_hash",
     "secret_order_book_code_id"
   ],
   "properties": {
+    "amm_factory_contract_address": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "amm_factory_contract_hash": {
+      "type": "string"
+    },
     "entropy": {
       "type": "string"
     },
@@ -18,6 +26,11 @@
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "HumanAddr": {
+      "type": "string"
     }
   }
 }

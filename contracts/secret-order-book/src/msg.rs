@@ -12,6 +12,8 @@ pub struct InitMsg {
     pub factory_key: String,
     pub token1_info: AssetInfo,
     pub token2_info: AssetInfo,
+    pub amm_factory_contract_address: HumanAddr,
+    pub amm_factory_contract_hash: String
 }
 
 // Messages sent to SNIP-20 contracts
@@ -117,6 +119,38 @@ pub enum FactoryQueryMsg {
 }
 impl Query for FactoryQueryMsg {
     const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmmFactoryQueryMsg {
+    Pair {
+        asset_infos: [AmmAssetInfo; 2]
+    }
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmmAssetInfo {
+    Token {
+        contract_addr: HumanAddr,
+        token_code_hash: String,
+        viewing_key: String,
+    },
+    NativeToken {
+        denom: String,
+    },
+}
+
+impl Query for AmmFactoryQueryMsg {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AmmFactoryPairResponse {
+    pub asset_infos: [AmmAssetInfo; 2],
+    pub contract_addr: HumanAddr,
+    pub liquidity_token: HumanAddr,
+    pub token_code_hash: String
 }
 
 // State

@@ -19,6 +19,8 @@ mod tests {
         factory_key: String,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
+        amm_factory_contract_address: HumanAddr,
+        amm_factory_contract_hash: String
     ) -> (
         StdResult<InitResponse>,
         Extern<MockStorage, MockApi, MockQuerier>,
@@ -32,6 +34,8 @@ mod tests {
             factory_key,
             token1_info,
             token2_info,
+            amm_factory_contract_address,
+            amm_factory_contract_hash
         };
 
         (init(&mut deps, env, init_msg), deps)
@@ -59,7 +63,9 @@ mod tests {
                     }
                 ),
                 native_token: None
-            }
+            },
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),
@@ -122,6 +128,8 @@ mod tests {
                 ),
                 native_token: None
             },
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),
@@ -237,6 +245,8 @@ mod tests {
                 ),
                 native_token: None
             },
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
         );
         assert!(
             init_result.is_ok(),

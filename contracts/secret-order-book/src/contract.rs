@@ -2,11 +2,12 @@ use cosmwasm_std::{Api, BankMsg, Binary, Coin, CosmosMsg, Empty, Env, Extern, Ha
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use crate::{msg::{AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
+use crate::{msg::{AmmFactoryPairResponse, AmmAssetInfo, AmmFactoryQueryMsg, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
-pub const FACTORY_DATA: &[u8] = b"factory"; // address, hash, key
-pub const TOKEN1_DATA: &[u8] = b"token1"; // address, hash
-pub const TOKEN2_DATA: &[u8] = b"token2"; // address, hash
+pub const FACTORY_DATA: &[u8] = b"factory";
+pub const AMM_PAIR_ADDRESS: &[u8] = b"ammpair";
+pub const TOKEN1_DATA: &[u8] = b"token1";
+pub const TOKEN2_DATA: &[u8] = b"token2";
 pub const LIMIT_ORDERS: &[u8] = b"limitorders";
 pub const BID_ORDER_QUEUE: &[u8] = b"bidordequeue";
 pub const ASK_ORDER_QUEUE: &[u8] = b"askorderqueue";
@@ -27,6 +28,35 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     save(&mut deps.storage, BID_ORDER_QUEUE, &OrderQueue::new(true))?;
     save(&mut deps.storage, ASK_ORDER_QUEUE, &OrderQueue::new(false))?;
+
+    // check if this pair is on AMM
+    let response: AmmFactoryPairResponse =
+    AmmFactoryQueryMsg::Pair {
+        asset_infos: [
+            match msg.token1_info.clone().is_native_token {
+                true => AmmAssetInfo::NativeToken {
+                    denom: msg.token1_info.clone().native_token.unwrap().denom
+                },
+                false => AmmAssetInfo::Token {
+                    contract_addr: msg.token1_info.clone().token.unwrap().contract_addr,
+                    token_code_hash: msg.token1_info.clone().token.unwrap().token_code_hash,
+                    viewing_key: "".to_string()
+                }
+            },
+            match msg.token2_info.clone().is_native_token {
+                true => AmmAssetInfo::NativeToken {
+                    denom: msg.token2_info.clone().native_token.unwrap().denom
+                },
+                false => AmmAssetInfo::Token {
+                    contract_addr: msg.token2_info.clone().token.unwrap().contract_addr,
+                    token_code_hash: msg.token2_info.clone().token.unwrap().token_code_hash,
+                    viewing_key: "".to_string()
+                }
+            },
+        ],
+    }.query(&deps.querier, msg.amm_factory_contract_hash, msg.amm_factory_contract_address)?;
+
+    save(&mut deps.storage, AMM_PAIR_ADDRESS, &response.contract_addr)?;
 
     // send register to snip20
     let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.contract_code_hash))?;
@@ -56,18 +86,18 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let callback_msg = FactoryHandleMsg::InitCallBackFromSecretOrderBookToFactory {
         auth_key: msg.factory_key.clone(),
         contract_address: env.contract.address,
-        token1_info: msg.token1_info,
-        token2_info: msg.token2_info,
+        token1_info: msg.token1_info.clone(),
+        token2_info: msg.token2_info.clone(),
     };
 
     let cosmos_msg = callback_msg.to_cosmos_msg(msg.factory_hash.clone(), msg.factory_address.clone(), None)?;
 
+    let mut messages:Vec<CosmosMsg> = vec![cosmos_msg];
+    if token2_response != None {messages.insert(0, token2_response.unwrap())}
+    if token1_response != None {messages.insert(0, token1_response.unwrap())}
+
     Ok(InitResponse {
-        messages: vec![
-            token1_response.unwrap(),
-            token2_response.unwrap(),
-            cosmos_msg,
-        ],
+        messages,
         log: vec![],
     })
 }
