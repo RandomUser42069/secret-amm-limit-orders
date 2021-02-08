@@ -2,10 +2,10 @@ use cosmwasm_std::{Api, BankMsg, Binary, Coin, CosmosMsg, Empty, Env, Extern, Ha
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use crate::{msg::{AmmFactoryPairResponse, AmmAssetInfo, AmmFactoryQueryMsg, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
+use crate::{msg::{AmmPairSimulationResponse, AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
 pub const FACTORY_DATA: &[u8] = b"factory";
-pub const AMM_PAIR_ADDRESS: &[u8] = b"ammpair";
+pub const AMM_PAIR_DATA: &[u8] = b"ammpair";
 pub const TOKEN1_DATA: &[u8] = b"token1";
 pub const TOKEN2_DATA: &[u8] = b"token2";
 pub const LIMIT_ORDERS: &[u8] = b"limitorders";
@@ -29,35 +29,10 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     save(&mut deps.storage, BID_ORDER_QUEUE, &OrderQueue::new(true))?;
     save(&mut deps.storage, ASK_ORDER_QUEUE, &OrderQueue::new(false))?;
 
-    // check if this pair is on AMM
-    let response: AmmFactoryPairResponse =
-    AmmFactoryQueryMsg::Pair {
-        asset_infos: [
-            match msg.token1_info.clone().is_native_token {
-                true => AmmAssetInfo::NativeToken {
-                    denom: msg.token1_info.clone().native_token.unwrap().denom
-                },
-                false => AmmAssetInfo::Token {
-                    contract_addr: msg.token1_info.clone().token.unwrap().contract_addr,
-                    token_code_hash: msg.token1_info.clone().token.unwrap().token_code_hash,
-                    viewing_key: "".to_string()
-                }
-            },
-            match msg.token2_info.clone().is_native_token {
-                true => AmmAssetInfo::NativeToken {
-                    denom: msg.token2_info.clone().native_token.unwrap().denom
-                },
-                false => AmmAssetInfo::Token {
-                    contract_addr: msg.token2_info.clone().token.unwrap().contract_addr,
-                    token_code_hash: msg.token2_info.clone().token.unwrap().token_code_hash,
-                    viewing_key: "".to_string()
-                }
-            },
-        ],
-    }.query(&deps.querier, msg.amm_factory_contract_hash, msg.amm_factory_contract_address)?;
-
-    save(&mut deps.storage, AMM_PAIR_ADDRESS, &response.contract_addr)?;
-
+    let mut amm_pair_data = PrefixedStorage::new(AMM_PAIR_DATA, &mut deps.storage);
+    save(&mut amm_pair_data, b"address", &msg.amm_pair_contract_address)?;
+    save(&mut amm_pair_data, b"hash", &msg.amm_pair_contract_hash)?;
+    
     // send register to snip20
     let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.contract_code_hash))?;
     
@@ -86,6 +61,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let callback_msg = FactoryHandleMsg::InitCallBackFromSecretOrderBookToFactory {
         auth_key: msg.factory_key.clone(),
         contract_address: env.contract.address,
+        amm_pair_address: msg.amm_pair_contract_address,
         token1_info: msg.token1_info.clone(),
         token2_info: msg.token2_info.clone(),
     };
@@ -421,7 +397,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetLimitOrder {user_address, user_viewkey} => to_binary(&get_limit_order(deps, user_address, user_viewkey)?),
-        QueryMsg::CheckOrderBookTrigger {user_address, user_viewkey} => to_binary(&check_order_book_trigger(deps, user_address, user_viewkey)?),
+        QueryMsg::CheckOrderBookTrigger {} => to_binary(&check_order_book_trigger(deps)?),
         _ => Err(StdError::generic_err("Handler not found!"))
     }
 }
@@ -430,7 +406,7 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     user_address: HumanAddr,
     user_viewkey: String
-) -> StdResult<LimitOrderState> {
+) -> StdResult<Option<LimitOrderState>> {
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
     let factory_contract_hash: String = load(&factory_data, b"hash")?;
@@ -448,11 +424,9 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
         let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
         let limit_order_data:Option<LimitOrderState> = may_load(&limit_orders_data, user_address.as_slice())?;
         if let Some(limit_order_data) = limit_order_data {
-            return Ok(limit_order_data)
+            return Ok(Some(limit_order_data))
         } else {
-            return Err(StdError::generic_err(format!(
-                "No limit order found for this user."
-            ))); 
+            return Ok(None)
         }
     } else {
         return Err(StdError::generic_err(format!(
@@ -462,20 +436,69 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
 }
 
 fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    user_address: HumanAddr,
-    user_viewkey: String
+    deps: &Extern<S, A, Q>
 ) -> StdResult<bool> {
         let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        let mut bid_price: Option<Uint128> = None;
-        let mut ask_price: Option<Uint128> = None;
+        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
+        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address")?;
+        let amm_pair_hash: String = load(&amm_pair_data, b"hash")?;
+        let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+        let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+
+        let asset:AmmAssetInfo = 
+            match token1_data.is_native_token {
+                true => AmmAssetInfo::NativeToken {
+                    denom: token1_data.native_token.unwrap().denom
+                },
+                false => AmmAssetInfo::Token {
+                    contract_addr: token1_data.clone().token.unwrap().contract_addr,
+                    token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
+                    viewing_key: "".to_string()
+                }
+            };
 
         // Peek order books for the price and check the AMM price for this asset
         // Respond true if needs to trigger and false if not
 
-        //if let Some(bid_order_book_peek) = bid_order_book.peek() {
-        //    bid_price = Some(bid_order_book_peek.price);
-        //}
+        if let Some(bid_order_book_peek) = bid_order_book.peek() {
+            let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, bid_order_book_peek.id.as_slice())?;
+            
+            let response: AmmPairSimulationResponse =
+                AmmSimulationQuery::Simulation {
+                    offer_asset: asset.clone(),
+                    amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+                }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
+            
+            // Calculations Now
+            // 1 Token1      <=> X Token2
+            // amount Token1 <=> response token2
+            // response.return_amount/bid_order_book_peek.price
+            let current_rate:Uint128 = Uint128(1).multiply_ratio(response.return_amount, bid_order_book_peek.price);
 
-        return Ok(true)
+            if bid_order_book_peek.price >= current_rate {
+                return Ok(true);
+            }
+        }
+        if let Some(ask_order_book_peek) = ask_order_book.peek() {
+            let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, ask_order_book_peek.id.as_slice())?;
+            
+            let response: AmmPairSimulationResponse =
+            AmmSimulationQuery::ReverseSimulation {
+                ask_asset: asset.clone(),
+                amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+            }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
+        
+            // Calculations Now
+            // 1 Token1      <=> X Token2
+            // amount Token1 <=> response token2
+            // response.return_amount/bid_order_book_peek.price
+            let current_rate:Uint128 = Uint128(1).multiply_ratio(response.return_amount, ask_order_book_peek.price);
+            
+            if ask_order_book_peek.price <= current_rate {
+                return Ok(true);
+            } 
+        }
+
+        return Ok(false)
 }

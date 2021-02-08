@@ -1,11 +1,11 @@
 use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, to_binary};
 
-use crate::{msg::{AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContractInitMsg}, rand::sha_256};
+use crate::{msg::{SecretOrderBookContract, AmmFactoryPairResponse, AmmAssetInfo, AmmFactoryQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContractInitMsg}, rand::sha_256};
 use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
  
-use secret_toolkit::{snip20::token_info_query, utils::{InitCallback}};
+use secret_toolkit::{snip20::token_info_query, utils::{InitCallback, Query}};
 
 /// prefix for viewing keys
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
@@ -20,7 +20,7 @@ pub const SECRET_ORDER_BOOK_CONTRACT_CODE_HASH: &[u8] = b"secretorderbookcontrac
 /// storage key for the factory admin
 pub const FACTORY_KEY: &[u8] = b"factorykey";
 /// storage key for the secret order books
-pub const PREFIX_TOKEN_SECRET_ORDER_BOOKS: &[u8] = b"tokensecretorderbooks";
+pub const PREFIX_SECRET_ORDER_BOOKS: &[u8] = b"secretorderbooks";
 /// storage key for the amm factory address
 pub const AMM_FACTORY_ADDRESS: &[u8] = b"ammfactoryaddress";
 /// storage key for the children contracts 
@@ -55,14 +55,17 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::ChangeSecretOrderBookContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
         HandleMsg::NewSecretOrderBookInstanciate {
             token1_info,
-            token2_info
-        } => try_secret_order_book_instanciate(deps, env, &token1_info, &token2_info),
+            token2_info,
+            amm_pair_address,
+            amm_pair_hash
+        } => try_secret_order_book_instanciate(deps, env, &token1_info, &token2_info, &amm_pair_address, &amm_pair_hash),
         HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key, 
+            amm_pair_address,
             contract_address,  
             token1_info, 
             token2_info
-        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, contract_address, token1_info, token2_info)
+        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address, token1_info, token2_info)
     }
 }
 
@@ -110,22 +113,59 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     token1_info: &AssetInfo,
-    token2_info: &AssetInfo
+    token2_info: &AssetInfo,
+    amm_pair_address: &HumanAddr,
+    amm_pair_hash: &String
 ) -> HandleResult {  
     let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
     let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
     let amm_factory_address: HumanAddr = load(&deps.storage, AMM_FACTORY_ADDRESS)?;
     let amm_factory_hash: String = load(&deps.storage, AMM_FACTORY_HASH)?;
     let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
-    
+
+    // check if this pair is on AMM
+    let response: AmmFactoryPairResponse =
+    AmmFactoryQueryMsg::Pair {
+        asset_infos: [
+            match token1_info.clone().is_native_token {
+                true => AmmAssetInfo::NativeToken {
+                    denom: token1_info.clone().native_token.unwrap().denom
+                },
+                false => AmmAssetInfo::Token {
+                    contract_addr: token1_info.clone().token.unwrap().contract_addr.to_string(),
+                    token_code_hash: token1_info.clone().token.unwrap().token_code_hash.to_string(),
+                    viewing_key: "".to_string()
+                }
+            },
+            match token2_info.clone().is_native_token {
+                true => AmmAssetInfo::NativeToken {
+                    denom: token2_info.clone().native_token.unwrap().denom
+                },
+                false => AmmAssetInfo::Token {
+                    contract_addr: token2_info.clone().token.unwrap().contract_addr.to_string(),
+                    token_code_hash: token2_info.clone().token.unwrap().token_code_hash.to_string(),
+                    viewing_key: "".to_string()
+                }
+            },
+        ],
+    }.query(&deps.querier, amm_factory_hash, amm_factory_address)?;
+
+    if response.contract_addr != amm_pair_address.clone() {
+        return Err(StdError::generic_err(
+            "Bad Contract address!",
+        ));
+    }
+
+    // TODO: Check if hash is right
+
     let initmsg = SecretOrderBookContractInitMsg {
         factory_hash: env.contract_code_hash,
         factory_address: env.contract.address,
         factory_key,
         token1_info: token1_info.clone(),
         token2_info: token2_info.clone(),
-        amm_factory_contract_address: amm_factory_address,
-        amm_factory_contract_hash: amm_factory_hash
+        amm_pair_contract_address: amm_pair_address.clone(),
+        amm_pair_contract_hash: amm_pair_hash.clone(),
     };
     impl InitCallback for SecretOrderBookContractInitMsg {
         const BLOCK_SIZE: usize = BLOCK_SIZE;
@@ -166,6 +206,7 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     deps: &mut Extern<S, A, Q>,
     env: Env,
     auth_key: String,
+    amm_pair_address: HumanAddr,
     contract_address: HumanAddr,
     token1_info: AssetInfo,
     token2_info: AssetInfo,
@@ -179,44 +220,17 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
         ));
     }
 
-    let mut token1_address_raw: Option<CanonicalAddr> = None;
-    let mut token2_address_raw: Option<CanonicalAddr> = None;
+    let secret_order_book_contract:SecretOrderBookContract = SecretOrderBookContract{
+        contract_addr: contract_address,
+        asset_infos: vec![
+            token1_info,
+            token2_info
+        ]
+    };
 
-    match token1_info.is_native_token {
-        true => {}
-        false => {token1_address_raw = Some(deps.api.canonical_address(&token1_info.token.unwrap().contract_addr)?)}
-    }
-    match token2_info.is_native_token {
-        true => {},
-        false => {token2_address_raw = Some(deps.api.canonical_address(&token2_info.token.unwrap().contract_addr)?)}
-    }
+    let mut secret_order_books = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &mut deps.storage);
+    save(&mut secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice(), &secret_order_book_contract)?;
 
-    let mut token_secret_order_books = PrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &mut deps.storage);
-    if token1_address_raw.clone() != None {
-        let load_token1_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token1_address_raw.clone().unwrap().as_slice())?;
-        let mut token1_secret_order_books = load_token1_secret_order_books.unwrap_or_default();
-        token1_secret_order_books.insert(0,contract_address.clone());
-        save(&mut token_secret_order_books, token1_address_raw.clone().unwrap().as_slice(), &token1_secret_order_books)?;
-    } else {
-        let load_token1_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, &[0; 1])?;
-        let mut token1_secret_order_books = load_token1_secret_order_books.unwrap_or_default();
-        token1_secret_order_books.insert(0,contract_address.clone());
-        save(&mut token_secret_order_books, &[0], &token1_secret_order_books)?;
-    }
-    
-
-    if token2_address_raw.clone() != None {
-        let load_token2_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token2_address_raw.clone().unwrap().as_slice())?;
-        let mut token2_secret_order_books = load_token2_secret_order_books.unwrap_or_default();
-        token2_secret_order_books.insert(0,contract_address.clone());
-        save(&mut token_secret_order_books, token2_address_raw.clone().unwrap().as_slice(), &token2_secret_order_books)?;
-    } else {
-        let load_token2_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, &[0; 1])?;
-        let mut token2_secret_order_books = load_token2_secret_order_books.unwrap_or_default();
-        token2_secret_order_books.insert(0,contract_address.clone());
-        save(&mut token_secret_order_books, &[0], &token2_secret_order_books)?;
-    }
-    
     Ok(HandleResponse::default())
 }
 
@@ -231,7 +245,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
             factory_key
         } => try_validate_key(deps, &address, viewing_key, factory_key),
         QueryMsg::SecretOrderBookContractCodeId {} => secret_order_book_contract_code_id(deps),
-        QueryMsg::SecretOrderBooks {token_address} => secret_order_books(deps, token_address)
+        QueryMsg::SecretOrderBooks {contract_address} => secret_order_books(deps,contract_address),
     }
 }
 
@@ -290,23 +304,12 @@ fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
 
 fn secret_order_books <S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    token_address: Option<HumanAddr>
+    contract_address: HumanAddr
 ) -> QueryResult {
-    if token_address != None {
-        let token_address_raw = &deps.api.canonical_address(&token_address.unwrap())?;
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
+    let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&contract_address)?.as_slice())?;
 
-        let token_secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &deps.storage);
-        let load_token_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, token_address_raw.as_slice())?;
-    
-        to_binary(&QueryAnswer::SecretOrderBooks {
-            secret_order_books: load_token_secret_order_books.unwrap_or_default()
-        })
-    } else {
-        let token_secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_TOKEN_SECRET_ORDER_BOOKS, &deps.storage);
-        let load_token_secret_order_books: Option<Vec<HumanAddr>> = may_load(&token_secret_order_books, &[0; 1])?;
-    
-        to_binary(&QueryAnswer::SecretOrderBooks {
-            secret_order_books: load_token_secret_order_books.unwrap_or_default()
-        })
-    }
+    to_binary(&QueryAnswer::SecretOrderBooks {
+        secret_order_book: load_secret_order_book
+    })
 }

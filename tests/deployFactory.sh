@@ -192,4 +192,3 @@ echo $(docker exec $docker_name secretcli query compute tx $STORE_TX_HASH)
 ## Secret Order Book - Query Check Order Book Trigger
 ################################################################
 #secretcli q compute query $(echo "$secret_order_book_address" | tr -d '"') '{"check_order_book_trigger": {"user_address": "'$deployer_address_b'", "user_viewkey": '$user_factory_vk_b'}}'
-

@@ -12,8 +12,8 @@ pub struct InitMsg {
     pub factory_key: String,
     pub token1_info: AssetInfo,
     pub token2_info: AssetInfo,
-    pub amm_factory_contract_address: HumanAddr,
-    pub amm_factory_contract_hash: String
+    pub amm_pair_contract_address: HumanAddr,
+    pub amm_pair_contract_hash: String
 }
 
 // Messages sent to SNIP-20 contracts
@@ -53,6 +53,7 @@ pub enum FactoryHandleMsg {
     InitCallBackFromSecretOrderBookToFactory  {
         auth_key: String,
         contract_address: HumanAddr,
+        amm_pair_address: HumanAddr,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
     },
@@ -89,8 +90,6 @@ pub enum QueryMsg {
         user_viewkey: String
     },
     CheckOrderBookTrigger {
-        user_address: HumanAddr,
-        user_viewkey: String
     }
 }
 
@@ -128,7 +127,7 @@ pub enum AmmFactoryQueryMsg {
         asset_infos: [AmmAssetInfo; 2]
     }
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum AmmAssetInfo {
     Token {
@@ -152,6 +151,30 @@ pub struct AmmFactoryPairResponse {
     pub liquidity_token: HumanAddr,
     pub token_code_hash: String
 }
+
+#[derive(Serialize, Deserialize)]
+pub enum AmmSimulationQuery {
+    Simulation {
+        offer_asset: AmmAssetInfo,
+        amount: Uint128
+    },
+    ReverseSimulation {
+        ask_asset: AmmAssetInfo,
+        amount: Uint128
+    }
+}
+
+impl Query for AmmSimulationQuery {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AmmPairSimulationResponse {
+    pub return_amount: Uint128,
+    pub spread_amount: Uint128,
+    pub commission_amount: Uint128
+}
+
 
 // State
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

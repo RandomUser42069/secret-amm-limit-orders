@@ -1,6 +1,8 @@
-use cosmwasm_std::HumanAddr;
+use cosmwasm_std::{CanonicalAddr, HumanAddr};
 use schemars::JsonSchema;
+use secret_toolkit::utils::Query;
 use serde::{Deserialize, Serialize};
+use crate::{contract::BLOCK_SIZE};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
@@ -18,8 +20,8 @@ pub struct SecretOrderBookContractInitMsg {
     pub factory_key: String,
     pub token1_info: AssetInfo,
     pub token2_info: AssetInfo,
-    pub amm_factory_contract_address: HumanAddr,
-    pub amm_factory_contract_hash: String
+    pub amm_pair_contract_address: HumanAddr,
+    pub amm_pair_contract_hash: String
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -30,9 +32,12 @@ pub enum HandleMsg {
     NewSecretOrderBookInstanciate {
         token1_info: AssetInfo,
         token2_info: AssetInfo,
+        amm_pair_address: HumanAddr,
+        amm_pair_hash: String
     },
     InitCallBackFromSecretOrderBookToFactory {
         auth_key: String, 
+        amm_pair_address: HumanAddr,
         contract_address: HumanAddr,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
@@ -75,7 +80,7 @@ pub enum QueryMsg {
     },
     SecretOrderBookContractCodeId {},
     SecretOrderBooks {
-        token_address: Option<HumanAddr>,
+        contract_address: HumanAddr,
     }
 }
 
@@ -87,7 +92,14 @@ pub enum QueryAnswer {
     /// result of authenticating address/key pair
     IsKeyValid { is_valid: bool },
     SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
-    SecretOrderBooks {secret_order_books: Vec<HumanAddr>}
+    SecretOrderBooks {secret_order_book: Option<SecretOrderBookContract>},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct SecretOrderBookContract {
+    pub contract_addr: HumanAddr,
+    pub asset_infos: Vec<AssetInfo>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -107,4 +119,36 @@ pub struct Token {
 #[serde(rename_all = "snake_case")]
 pub struct NativeToken {
     pub denom: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum AmmFactoryQueryMsg {
+    Pair {
+        asset_infos: [AmmAssetInfo; 2]
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum AmmAssetInfo {
+    Token {
+        contract_addr: String,
+        token_code_hash: String,
+        viewing_key: String,
+    },
+    NativeToken {
+        denom: String,
+    },
+}
+
+impl Query for AmmFactoryQueryMsg {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AmmFactoryPairResponse {
+    pub asset_infos: [AmmAssetInfo; 2],
+    pub contract_addr: HumanAddr,
+    pub liquidity_token: HumanAddr,
+    pub token_code_hash: String
 }

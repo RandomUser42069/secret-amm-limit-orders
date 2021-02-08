@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{contract::{PREFIX_VIEW_KEY, query}, msg::{AssetInfo, NativeToken, ResponseStatus, Token}};
+    use crate::{contract::{PREFIX_VIEW_KEY, query}, msg::{AssetInfo, NativeToken, ResponseStatus, SecretOrderBookContract, Token}};
     use cosmwasm_std::{Extern, HumanAddr, StdResult, testing::*};
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use schemars::_serde_json::to_string;
@@ -239,7 +239,8 @@ mod tests {
                 is_native_token: true,
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
-            }
+            },
+            amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
         };
     
         let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
@@ -262,6 +263,7 @@ mod tests {
                 token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
+            amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
         };
     
         let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
@@ -272,7 +274,7 @@ mod tests {
         ); 
         
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: Some(HumanAddr("token1".to_string()))
+            contract_address: HumanAddr("ammpaircontract1".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -283,17 +285,26 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks {
-                secret_order_books
-            } => {
-                assert_eq!(secret_order_books[0], HumanAddr("contract2".to_string()));
-                assert_eq!(secret_order_books[1], HumanAddr("contract1".to_string()));
-            }
-            _ => panic!("unexpected"),
+            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+                assert_eq!(secret_order_book.unwrap().asset_infos, vec![
+                    AssetInfo {
+                        is_native_token: false,
+                        token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                        native_token: None
+                    },
+                    AssetInfo {
+                        is_native_token: true,
+                        token: None,
+                        native_token: Some(NativeToken{denom:"uscrt".to_string()})
+                    }
+                ])
+            },
+            _ => {}
         }
         
+    
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: None
+            contract_address: HumanAddr("ammpaircontract2".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -304,16 +315,26 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks {
-                secret_order_books
-            } => {
-                assert_eq!(secret_order_books[0], HumanAddr("contract1".to_string()))
-            }
-            _ => panic!("unexpected"),
+            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+                assert_eq!(secret_order_book.unwrap().asset_infos, 
+                    vec![
+                        AssetInfo {
+                            is_native_token: false,
+                            token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                            native_token: None
+                        },
+                        AssetInfo {
+                            is_native_token: false,
+                            token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+                            native_token: None
+                        }
+                    ])
+            },
+            _ => {}
         }
-    
+
         let query_msg = QueryMsg::SecretOrderBooks {
-            token_address: Some(HumanAddr("token3".to_string()))
+            contract_address: HumanAddr("ammpaircontract3".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -324,12 +345,10 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks {
-                secret_order_books
-            } => {
-                assert_eq!(secret_order_books[0], HumanAddr("contract2".to_string()))
-            }
-            _ => panic!("unexpected"),
+            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+                assert_eq!(secret_order_book, None)
+            },
+            _ => {}
         }
     }
 }
