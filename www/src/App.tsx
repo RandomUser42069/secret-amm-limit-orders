@@ -7,7 +7,7 @@ import PairsAvailable from "./Containers/PairsAvailable"
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const AMM_FACTORY_ADDRESS="secret1d3de9fsj0m6jkju94sc8yzecw7f6tfklydrwvc"
-const ORDERS_FACTORY_ADDRESS="secret1t3c4uyfecyckf4zzrlxpxnpwvlaqjwwjdh3x99" 
+const ORDERS_FACTORY_ADDRESS="secret1lrw7twt6n427hv9ke7fk245s9qmwyjstk7ene8" 
  
 function App() {
   const [client, setClient] = useState({

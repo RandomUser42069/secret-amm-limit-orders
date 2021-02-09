@@ -2,16 +2,10 @@ const { fromUtf8 } = require("@iov/encoding");
 
 // eslint-disable-next-line import/no-anonymous-default-export
 export default async (client, pair, factoryAddress) => {
-  console.log({
-    token1_info: pair.asset_infos[0],
-    token2_info: pair.asset_infos[1],
-    amm_pair_address: pair.contract_addr,
-    amm_pair_hash: pair.contract_hash
-})
     let handleMsg = { 
         new_secret_order_book_instanciate: {
-            token1_info: pair.asset_infos[0],
-            token2_info: pair.asset_infos[1],
+            //token1_info: pair.asset_infos[0],
+            //token2_info: pair.asset_infos[1],
             amm_pair_address: pair.contract_addr,
             amm_pair_hash: pair.contract_hash
         } 

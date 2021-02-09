@@ -30,8 +30,6 @@ pub enum HandleMsg {
     CreateViewingKey {entropy: String},
     ChangeSecretOrderBookContractCodeId {code_id: u64, code_hash: String},
     NewSecretOrderBookInstanciate {
-        token1_info: AssetInfo,
-        token2_info: AssetInfo,
         amm_pair_address: HumanAddr,
         amm_pair_hash: String
     },
@@ -123,10 +121,8 @@ pub struct NativeToken {
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum AmmFactoryQueryMsg {
-    Pair {
-        asset_infos: [AmmAssetInfo; 2]
-    }
+pub enum AmmQueryMsg {
+    Pair {}
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -141,12 +137,12 @@ pub enum AmmAssetInfo {
     },
 }
 
-impl Query for AmmFactoryQueryMsg {
+impl Query for AmmQueryMsg {
     const BLOCK_SIZE: usize = BLOCK_SIZE;
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AmmFactoryPairResponse {
+pub struct AmmPairResponse {
     pub asset_infos: [AmmAssetInfo; 2],
     pub contract_addr: HumanAddr,
     pub liquidity_token: HumanAddr,

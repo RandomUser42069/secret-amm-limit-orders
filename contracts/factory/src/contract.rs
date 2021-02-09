@@ -1,6 +1,6 @@
 use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, to_binary};
 
-use crate::{msg::{SecretOrderBookContract, AmmFactoryPairResponse, AmmAssetInfo, AmmFactoryQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContractInitMsg}, rand::sha_256};
+use crate::{msg::{AmmAssetInfo, AmmPairResponse, AmmQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, NativeToken, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContract, SecretOrderBookContractInitMsg, Token}, rand::sha_256};
 use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
@@ -54,11 +54,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::CreateViewingKey { entropy } => try_create_key(deps, env, &entropy),
         HandleMsg::ChangeSecretOrderBookContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
         HandleMsg::NewSecretOrderBookInstanciate {
-            token1_info,
-            token2_info,
             amm_pair_address,
             amm_pair_hash
-        } => try_secret_order_book_instanciate(deps, env, &token1_info, &token2_info, &amm_pair_address, &amm_pair_hash),
+        } => try_secret_order_book_instanciate(deps, env, &amm_pair_address, &amm_pair_hash),
         HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key, 
             amm_pair_address,
@@ -112,51 +110,52 @@ fn try_change_secret_order_book_contract_code_id<S: Storage, A: Api, Q: Querier>
 fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    token1_info: &AssetInfo,
-    token2_info: &AssetInfo,
     amm_pair_address: &HumanAddr,
     amm_pair_hash: &String
 ) -> HandleResult {  
     let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
     let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
-    let amm_factory_address: HumanAddr = load(&deps.storage, AMM_FACTORY_ADDRESS)?;
-    let amm_factory_hash: String = load(&deps.storage, AMM_FACTORY_HASH)?;
     let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
 
-    // check if this pair is on AMM
-    let response: AmmFactoryPairResponse =
-    AmmFactoryQueryMsg::Pair {
-        asset_infos: [
-            match token1_info.clone().is_native_token {
-                true => AmmAssetInfo::NativeToken {
-                    denom: token1_info.clone().native_token.unwrap().denom
-                },
-                false => AmmAssetInfo::Token {
-                    contract_addr: token1_info.clone().token.unwrap().contract_addr.to_string(),
-                    token_code_hash: token1_info.clone().token.unwrap().token_code_hash.to_string(),
-                    viewing_key: "".to_string()
-                }
-            },
-            match token2_info.clone().is_native_token {
-                true => AmmAssetInfo::NativeToken {
-                    denom: token2_info.clone().native_token.unwrap().denom
-                },
-                false => AmmAssetInfo::Token {
-                    contract_addr: token2_info.clone().token.unwrap().contract_addr.to_string(),
-                    token_code_hash: token2_info.clone().token.unwrap().token_code_hash.to_string(),
-                    viewing_key: "".to_string()
-                }
-            },
-        ],
-    }.query(&deps.querier, amm_factory_hash, amm_factory_address)?;
+    // check the info from pair AMM
+    let response: AmmPairResponse =
+    AmmQueryMsg::Pair {}.query(&deps.querier, amm_pair_hash.to_string(), amm_pair_address.to_owned())?;
 
-    if response.contract_addr != amm_pair_address.clone() {
-        return Err(StdError::generic_err(
-            "Bad Contract address!",
-        ));
-    }
+    let token1_info: AssetInfo = match response.asset_infos[0].clone() {
+        AmmAssetInfo::NativeToken { denom } => AssetInfo {
+            is_native_token: true,
+            token: None,
+            native_token: Some(NativeToken {
+                denom
+            })
+        },
+        crate::msg::AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
+            is_native_token: false,
+            token: Some(Token {
+                contract_addr: HumanAddr(contract_addr),
+                token_code_hash
+            }),
+            native_token: None
+        }
+    };
 
-    // TODO: Check if hash is right
+    let token2_info: AssetInfo = match response.asset_infos[1].clone() {
+        AmmAssetInfo::NativeToken { denom } => AssetInfo {
+            is_native_token: true,
+            token: None,
+            native_token: Some(NativeToken {
+                denom
+            })
+        },
+        crate::msg::AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
+            is_native_token: false,
+            token: Some(Token {
+                contract_addr: HumanAddr(contract_addr),
+                token_code_hash
+            }),
+            native_token: None
+        }
+    };
 
     let initmsg = SecretOrderBookContractInitMsg {
         factory_hash: env.contract_code_hash,
@@ -167,6 +166,7 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
         amm_pair_contract_address: amm_pair_address.clone(),
         amm_pair_contract_hash: amm_pair_hash.clone(),
     };
+
     impl InitCallback for SecretOrderBookContractInitMsg {
         const BLOCK_SIZE: usize = BLOCK_SIZE;
     }
@@ -174,17 +174,17 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     let token1_symbol:String;
     let token2_symbol:String;
     //query tokens info and get symbols from Addresses
-    match token1_info.is_native_token {
+    match token1_info.clone().is_native_token {
         true => token1_symbol="SCRT".to_string(),
         false => {
-            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.token.to_owned().unwrap().token_code_hash, token1_info.token.to_owned().unwrap().contract_addr);
+            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.clone().token.unwrap().token_code_hash, token1_info.clone().token.unwrap().contract_addr);
             token1_symbol = response_token1.unwrap().symbol;
         }
     }
-    match token2_info.is_native_token {
+    match token2_info.clone().is_native_token {
         true => token2_symbol="SCRT".to_string(),
         false => {
-            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.token.to_owned().unwrap().token_code_hash, token2_info.token.to_owned().unwrap().contract_addr);
+            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.clone().token.unwrap().token_code_hash, token2_info.clone().token.unwrap().contract_addr);
             token2_symbol = response_token2.unwrap().symbol;
         }
     }

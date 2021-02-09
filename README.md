@@ -26,8 +26,7 @@ TODO:
 * Handles
     * CreateViewingKey => For users to create their VK to see their Limit Orders
     * ChangeSecretOrderBookContractCodeId => For Admin to change the Secret Order Book Contract codeid (code updates, ...)
-    * NewSecretOrderBookInstanciate => Create a nem Secret Order Book for a specific pair
-        * ***TODO: Currently it receives the pair info + amm pair contract. It will only need the amm pair contract so it calls the amm pair contract and receives the token info from there!***
+    * NewSecretOrderBookInstanciate => Create a nem Secret Order Book for a specific pair of the AMM
     * InitCallBackFromSecretOrderBookToFactory => Callback from the previous method, so it receives the address that the contract was instanciated and save it for query.
 * Queries
     * IsKeyValid => Called by Secret Order Book Contracts to check if a user provided the correct vk
@@ -37,7 +36,9 @@ TODO:
 ### Secret Order Book Contract
 * Handles
     * Receive => Create Limit Order from SNIP20 Tokens
+        * ***TODO: Receive the max slipage too***
     * ReceiveNativeToken => Create Limit Order from the native token
+        * ***TODO: Receive the max slipage too***
     * WithdrawLimitOrder => Widthdraw assets locked on a limit order
     * ***TODO: TriggerLimitOrders***
 * Queries
