@@ -81,6 +81,25 @@ pub enum HandleMsg {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HandleAnswer {
+    /// generic status response
+    Status {
+        /// success or failure
+        status: ResponseStatus,
+        /// execution description
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+}
+/// success or failure response
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub enum ResponseStatus {
+    Success,
+    Failure,
+}
+
 /// Queries
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -154,14 +173,17 @@ pub struct AmmFactoryPairResponse {
 
 #[derive(Serialize, Deserialize)]
 pub enum AmmSimulationQuery {
-    Simulation {
-        offer_asset: AmmAssetInfo,
-        amount: Uint128
+    simulation {
+        offer_asset: AmmSimulationOfferAsset,
     },
-    ReverseSimulation {
-        ask_asset: AmmAssetInfo,
-        amount: Uint128
+    reverseSimulation {
+        ask_asset: AmmSimulationOfferAsset,
     }
+}
+#[derive(Serialize, Deserialize)]
+pub struct AmmSimulationOfferAsset {
+    pub info: AmmAssetInfo,
+    pub amount: Uint128
 }
 
 impl Query for AmmSimulationQuery {

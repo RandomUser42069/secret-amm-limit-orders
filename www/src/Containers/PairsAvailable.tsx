@@ -2,6 +2,8 @@ import React, {useState,useEffect} from 'react';
 import {Card, Button, Spinner} from 'react-bootstrap'
 import createPairOrderBook from "../requests/createPairOrderBook"
 import ViewKeyButton from './ViewKeyButton';
+import createLimitOrder from "../requests/createLimitOrder"
+import withdrawLimitOrder from "../requests/withdrawLimitOrder"
 
 // eslint-disable-next-line import/no-anonymous-default-export
 export default ({
@@ -14,6 +16,7 @@ export default ({
     const [getPairsCompleted, setGetPairsCompleted] = useState<boolean>(false)
     const [getLimitOrdersCompleted, setGetLimitOrdersCompleted] = useState<boolean>(false)
 
+    console.log(pairs)
     useEffect(() => {
         async function init() {
             if (client.ready && !getPairsCompleted) {
@@ -96,6 +99,9 @@ export default ({
                           }) 
                         if (!response) {
                             updatedPairs[i].order_book_data!.loading_limit_orders = false
+                        } else {
+                            updatedPairs[i].order_book_data!.limit_order = response
+                            updatedPairs[i].order_book_data!.loading_limit_orders = false
                         }
                     }
                 }
@@ -133,11 +139,19 @@ export default ({
                                     <Button variant="primary"><Spinner animation="border" /></Button>
                                 : !pair.order_book_data.loading_limit_orders && viewKey && !pair.order_book_data.limit_order ?
                                     <div>
-                                        <Button variant="success" style={{margin:"5px"}} onClick={() => {}}>Buy</Button>
+                                        <Button variant="success" style={{margin:"5px"}} onClick={async () => {
+                                            await createLimitOrder(client.execute,pair)
+                                        }}>Buy</Button>
                                         <Button variant="danger" style={{margin:"5px"}} onClick={() => {}}>Sell</Button>
                                     </div> :
                                         !pair.order_book_data.loading_limit_orders && viewKey && pair.order_book_data.limit_order &&
-                                            <Button variant="primary" disabled>View</Button>
+                                            <div>
+                                                <Button variant="primary" disabled>View</Button>
+                                                <Button variant="warning" onClick={async () => {
+                                                    await withdrawLimitOrder(client.execute,pair)
+                                                }}>Withdraw</Button>
+                                            </div>
+                                            
                         }
                         </Card.Body>
                     </Card>)

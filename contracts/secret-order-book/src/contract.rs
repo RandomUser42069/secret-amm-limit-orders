@@ -2,7 +2,7 @@ use cosmwasm_std::{Api, BankMsg, Binary, Coin, CosmosMsg, Empty, Env, Extern, Ha
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use crate::{msg::{AmmPairSimulationResponse, AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, Snip20Msg}, state::{load, may_load, remove, save}};
+use crate::{msg::{AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, ResponseStatus, Snip20Msg}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
 pub const FACTORY_DATA: &[u8] = b"factory";
 pub const AMM_PAIR_DATA: &[u8] = b"ammpair";
@@ -250,12 +250,15 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
             "No limit order found for this user."
         ))); 
     }
+
+    let mut transfer_result: CosmosMsg = CosmosMsg::Custom(Empty {});
+
     // send transfer from this contract to the token contract
     if limit_order_data.clone().unwrap().balances[0] > Uint128(0) {
         let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
         match token1_info.is_native_token {
             true => {
-                let _transfer_result:CosmosMsg = CosmosMsg::Bank(BankMsg::Send {
+                transfer_result = CosmosMsg::Bank(BankMsg::Send {
                     from_address: env.contract.address.clone(),
                     to_address: env.message.sender.clone(),
                     amount: vec![Coin {
@@ -265,14 +268,14 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
                 });
             }
             false => {
-                let _transfer_result: StdResult<CosmosMsg> = transfer_msg(
+                transfer_result = transfer_msg(
                     env.message.sender.clone(),
                     limit_order_data.clone().unwrap().balances[0],
                     None,
                     BLOCK_SIZE,
                     token1_info.token.clone().unwrap().token_code_hash,
                     token1_info.token.clone().unwrap().contract_addr
-                );
+                ).unwrap();
             }
         }        
     }
@@ -281,24 +284,24 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
         let token2_info: AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
         match token2_info.is_native_token {
             true => {
-                let _transfer_result:CosmosMsg = CosmosMsg::Bank(BankMsg::Send {
+                transfer_result = CosmosMsg::Bank(BankMsg::Send {
                     from_address: env.contract.address.clone(),
                     to_address: env.message.sender.clone(),
                     amount: vec![Coin {
                         denom: token2_info.native_token.unwrap().denom,
-                        amount: limit_order_data.clone().unwrap().balances[0],
+                        amount: limit_order_data.clone().unwrap().balances[1],
                     }],
                 });
             }
             false => {
-                let _transfer_result: StdResult<CosmosMsg> = transfer_msg(
+                transfer_result = transfer_msg(
                     env.message.sender.clone(),
-                    limit_order_data.clone().unwrap().balances[0],
+                    limit_order_data.clone().unwrap().balances[1],
                     None,
                     BLOCK_SIZE,
                     token2_info.token.clone().unwrap().token_code_hash,
                     token2_info.token.clone().unwrap().contract_addr
-                );
+                ).unwrap();
             }
         }      
     }
@@ -312,7 +315,16 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
     );
     save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
     // Response
-    Ok(HandleResponse::default())
+    Ok(HandleResponse {
+        messages: vec![
+            transfer_result
+        ],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Status {
+            status: ResponseStatus::Success,
+            message: None,
+        })?),
+    })
 }
 
 pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
@@ -465,9 +477,11 @@ fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
             let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, bid_order_book_peek.id.as_slice())?;
             
             let response: AmmPairSimulationResponse =
-                AmmSimulationQuery::Simulation {
-                    offer_asset: asset.clone(),
-                    amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+                AmmSimulationQuery::simulation {
+                    offer_asset: AmmSimulationOfferAsset{
+                        info: asset.clone(),
+                        amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+                    }
                 }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
             
             // Calculations Now
@@ -484,9 +498,11 @@ fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
             let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, ask_order_book_peek.id.as_slice())?;
             
             let response: AmmPairSimulationResponse =
-            AmmSimulationQuery::ReverseSimulation {
-                ask_asset: asset.clone(),
-                amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+            AmmSimulationQuery::reverseSimulation {
+                ask_asset: AmmSimulationOfferAsset {
+                    info: asset.clone(),
+                    amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+                }
             }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
         
             // Calculations Now

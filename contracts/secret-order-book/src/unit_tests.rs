@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Coin, Extern, HumanAddr, StdResult, Uint128, testing::*};
+    use cosmwasm_std::{Coin, Empty, Extern, HumanAddr, StdResult, Uint128, testing::*};
     use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{AssetInfo, HandleMsg, NativeToken, Token}, state::{load, may_load}};
     use crate::contract::{init};
     use crate::order_queues::OrderQueue;
@@ -220,6 +220,16 @@ mod tests {
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
         let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(5)]);
+    
+        // withdraw
+        let handle_msg = HandleMsg::WithdrawLimitOrder {};
+
+        let handle_result = handle(&mut deps, mock_env("alice", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
     }
 
     #[test]
