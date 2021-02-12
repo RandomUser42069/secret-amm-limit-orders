@@ -1,6 +1,6 @@
 #!/bin/bash
 
-order_factory_contract_address="secret1m6lhg9t54n55snj6xq85r3pyupe65l8xfp9s2g"
+order_factory_contract_address="secret1srrskw93uvrhec00wu84880a4qf603sr6rwl6d"
 
 my_address="secret1uwdn876f5cal4dskdzny3szml8tgdlgfedtnxy"
 amm_pair_address="secret1cwu4vpydy609uthyrddn2c4q0crt4ldccd983k"
@@ -42,9 +42,9 @@ orderbook_address=$(secretcli q compute query $order_factory_contract_address '{
 #secretcli tx compute execute $orderbook_address '{"withdraw_limit_order": {}}' --from a -y --gas 1500000 -b block
 
 #Check if there are limit orders to trigger
-#secretcli q compute query $orderbook_address '{"check_order_book_trigger":{}}'
+secretcli q compute query $orderbook_address '{"check_order_book_trigger":{}}'
 
-secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info": {"token": {"contract_addr": "'$token1_address'", "token_code_hash": "'$token1_hash'", "viewing_key": ""}},"amount":"100000000"}}}'
+secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info": {"token": {"contract_addr": "'$token1_address'", "token_code_hash": "'$token1_hash'", "viewing_key": ""}},"amount":"1"}}}'
 
 # total swap amount => return_amount
 # slippage % => spread_amount * 100 / return_amount

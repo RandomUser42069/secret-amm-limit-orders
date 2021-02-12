@@ -450,71 +450,105 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
 fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
 ) -> StdResult<bool> {
-        let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
-        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
-        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address")?;
-        let amm_pair_hash: String = load(&amm_pair_data, b"hash")?;
-        let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
-        let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
 
-        let asset:AmmAssetInfo = 
-            match token1_data.is_native_token {
-                true => AmmAssetInfo::NativeToken {
-                    denom: token1_data.native_token.unwrap().denom
-                },
-                false => AmmAssetInfo::Token {
-                    contract_addr: token1_data.clone().token.unwrap().contract_addr,
-                    token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
-                    viewing_key: "".to_string()
-                }
-            };
+        let bid_to_trigger = get_limit_order_to_trigger(deps, true);
+        if bid_to_trigger != None {
+            return Ok(true)
+        }
+        let ask_to_trigger = get_limit_order_to_trigger(deps, false);
+        if ask_to_trigger != None {
+            return Ok(true)
+        }
 
-        // Peek order books for the price and check the AMM price for this asset
-        // Respond true if needs to trigger and false if not
+        return Ok(false)
+}
 
-        if let Some(bid_order_book_peek) = bid_order_book.peek() {
-            let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, bid_order_book_peek.id.as_slice())?;
-            
-            let response: AmmPairSimulationResponse =
+
+pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    is_bid: bool
+) -> Option<LimitOrderState> {
+    let mut order_book: OrderQueue;
+    let token_data: AssetInfo;
+    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+    let amm_pair_hash: String = load(&amm_pair_data, b"hash").unwrap();
+    let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+
+    if is_bid {
+        order_book = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        token_data = load(&deps.storage, TOKEN1_DATA).unwrap();
+    } else {
+        order_book = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
+        token_data = load(&deps.storage, TOKEN2_DATA).unwrap();
+    }
+    
+    let asset:AmmAssetInfo = 
+    match token_data.is_native_token {
+        true => AmmAssetInfo::NativeToken {
+            denom: token_data.native_token.unwrap().denom
+        },
+        false => AmmAssetInfo::Token {
+            contract_addr: token_data.clone().token.unwrap().contract_addr,
+            token_code_hash: token_data.clone().token.unwrap().token_code_hash,
+            viewing_key: "".to_string()
+        }
+    };
+
+    // Get Base Price => Lowest Amount possible
+    let response_amm_base_simulation: AmmPairSimulationResponse =
+    AmmSimulationQuery::simulation {
+        offer_asset: AmmSimulationOfferAsset{
+            info: asset.clone(),
+            amount: Uint128(1)
+        }
+    }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
+
+    
+    for _ in 1..10 { // Max limit of 10 limit orders to check
+        // Peek order, compare order price with base price + spread
+        if let Some(order_book_peek) = order_book.peek() {
+            let would_trigger_base_price: bool;
+            if is_bid {
+                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount
+            } else {
+                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount
+            }
+
+            if would_trigger_base_price {
+                // Now we know that this order is a candidate to trigger but need to simulate again with his amount 
+                let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_book_peek.id.as_slice()).unwrap();
+               
+                let response_amm_order_simulation: AmmPairSimulationResponse =
                 AmmSimulationQuery::simulation {
                     offer_asset: AmmSimulationOfferAsset{
                         info: asset.clone(),
                         amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
                     }
-                }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
-            
-            // Calculations Now
-            // 1 Token1      <=> X Token2
-            // amount Token1 <=> response token2
-            // response.return_amount/bid_order_book_peek.price
-            let current_rate:Uint128 = Uint128(1).multiply_ratio(response.return_amount, bid_order_book_peek.price);
+                }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
+                
+                // Here we have the final simulation for this, and check if it can be triggered with 0 slippage
+                let would_trigger_total_amount: bool;
+                if is_bid {
+                    would_trigger_total_amount = order_book_peek.price >= response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount
+                } else {
+                    would_trigger_total_amount = order_book_peek.price <= response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount
+                }
 
-            if bid_order_book_peek.price >= current_rate {
-                return Ok(true);
+                if would_trigger_total_amount {
+                    //This order is elligible for a trigger so return it
+                    return Some(limit_order_data.clone().unwrap())
+                } else {
+                    // pop current order from the orderbook as it's not elligible for triggering
+                    order_book.pop();
+                    // continues the loop as lower amount limit orders can be on the order book
+                }
+            } else {
+                // Breaks the cycle because the orderbook is ordered and if the base price would not trigger this order, the others would not trigger too
+                break;
             }
         }
-        if let Some(ask_order_book_peek) = ask_order_book.peek() {
-            let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, ask_order_book_peek.id.as_slice())?;
-            
-            let response: AmmPairSimulationResponse =
-            AmmSimulationQuery::reverseSimulation {
-                ask_asset: AmmSimulationOfferAsset {
-                    info: asset.clone(),
-                    amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
-                }
-            }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone())?;
-        
-            // Calculations Now
-            // 1 Token1      <=> X Token2
-            // amount Token1 <=> response token2
-            // response.return_amount/bid_order_book_peek.price
-            let current_rate:Uint128 = Uint128(1).multiply_ratio(response.return_amount, ask_order_book_peek.price);
-            
-            if ask_order_book_peek.price <= current_rate {
-                return Ok(true);
-            } 
-        }
+    }
 
-        return Ok(false)
+    return None;
 }
