@@ -1,10 +1,10 @@
 #!/bin/bash
 
-order_factory_contract_address="secret1srrskw93uvrhec00wu84880a4qf603sr6rwl6d"
+order_factory_contract_address="secret1e4dd6lr0ldmfe6zuymm6krulkzwkdaeqql6gn6"
 
 my_address="secret1uwdn876f5cal4dskdzny3szml8tgdlgfedtnxy"
-amm_pair_address="secret1cwu4vpydy609uthyrddn2c4q0crt4ldccd983k"
-amm_pair_hash="3300be84224a4021e96a4940609179b82264e6c981164557cc88aebae0c66c10"
+amm_pair_address="secret1j7rhfmjrap2p8yrz8g7z65kj5md3mqg9mjxyg2"
+amm_pair_hash="91b7563574f7cb759dfdfe6a352662b6fc50f965cd7869150a21cdf5ea4b3131"
 token1_address="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 token1_hash="CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62"
 token2_address="secret1ttg5cn3mv5n9qv8r53stt6cjx8qft8ut9d66ed"
@@ -31,9 +31,12 @@ order_vk="b/SDvg53Ff0e2YH5/nTSu5r/0dWqZujrQS8Arg9x2j4="
 #Get address of Orderbook
 orderbook_address=$(secretcli q compute query $order_factory_contract_address '{"secret_order_books": {"contract_address": "'$amm_pair_address'"}}' | jq -r .secret_order_books.secret_order_book.contract_addr)
 
+#Query Pair Info
+secretcli q compute query $orderbook_address '{"order_book_pair_info":{}}'
+
 #Create Limit Order
 #msg=$(base64 -w 0 <<<'{"create_limit_order": {"is_bid": true, "price": "123"}}')
-#secretcli tx compute execute $token2_address '{"send":{"recipient": "'$orderbook_address'", "amount": "1000", "msg": "'"$msg"'"}}' --from a -y --gas 1500000 -b block
+#secretcli tx compute execute $token1_address '{"send":{"recipient": "'$orderbook_address'", "amount": "1", "msg": "'"$msg"'"}}' --from a -y --gas 1500000 -b block
 
 #Get Limit Order
 #secretcli q compute query $orderbook_address '{"get_limit_order": {"user_address":"'$my_address'", "user_viewkey":"'$order_vk'"}}'
@@ -42,9 +45,11 @@ orderbook_address=$(secretcli q compute query $order_factory_contract_address '{
 #secretcli tx compute execute $orderbook_address '{"withdraw_limit_order": {}}' --from a -y --gas 1500000 -b block
 
 #Check if there are limit orders to trigger
-secretcli q compute query $orderbook_address '{"check_order_book_trigger":{}}'
+secretcli q compute query $orderbook_address '{"order_book_pair_info":{}}'
 
-secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info": {"token": {"contract_addr": "'$token1_address'", "token_code_hash": "'$token1_hash'", "viewing_key": ""}},"amount":"1"}}}'
+secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx","token_code_hash":"CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62","viewing_key":""}},"amount":"1"}}}'
+secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1ttg5cn3mv5n9qv8r53stt6cjx8qft8ut9d66ed","token_code_hash":"2DA545EBC441BE05C9FA6338F3353F35AC02EC4B02454BC49B1A66F4B9866AED","viewing_key":""}},"amount":"10000000000000000"}}}'
+
 
 # total swap amount => return_amount
 # slippage % => spread_amount * 100 / return_amount

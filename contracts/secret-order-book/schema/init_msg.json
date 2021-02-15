@@ -38,11 +38,21 @@
     "AssetInfo": {
       "type": "object",
       "required": [
-        "is_native_token"
+        "decimal_places",
+        "is_native_token",
+        "min_order_amount"
       ],
       "properties": {
+        "decimal_places": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
         "is_native_token": {
           "type": "boolean"
+        },
+        "min_order_amount": {
+          "$ref": "#/definitions/Uint128"
         },
         "native_token": {
           "anyOf": [
@@ -94,6 +104,9 @@
           "type": "string"
         }
       }
+    },
+    "Uint128": {
+      "type": "string"
     }
   }
 }

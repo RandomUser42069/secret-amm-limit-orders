@@ -108,8 +108,8 @@ pub enum QueryMsg {
         user_address: HumanAddr,
         user_viewkey: String
     },
-    CheckOrderBookTrigger {
-    }
+    CheckOrderBookTrigger {},
+    OrderBookPairInfo {}
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -146,7 +146,7 @@ pub enum AmmFactoryQueryMsg {
         asset_infos: [AmmAssetInfo; 2]
     }
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AmmAssetInfo {
     Token {
@@ -190,7 +190,7 @@ impl Query for AmmSimulationQuery {
     const BLOCK_SIZE: usize = BLOCK_SIZE;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct AmmPairSimulationResponse {
     pub return_amount: Uint128,
     pub spread_amount: Uint128,
@@ -214,6 +214,8 @@ pub struct LimitOrderState {
 #[serde(rename_all = "snake_case")]
 pub struct AssetInfo {
     pub is_native_token: bool,
+    pub decimal_places: u8,
+    pub min_order_amount: Uint128,
     pub token: Option<Token>,
     pub native_token: Option<NativeToken>
 }

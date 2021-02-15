@@ -1,13 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Coin, Extern, HumanAddr, Querier, QuerierResult, StdResult, Uint128, from_binary, testing::*};
-    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, may_load}};
+    use cosmwasm_std::{to_vec,Binary, WasmQuery, QueryRequest, Coin, Extern, HumanAddr, Querier, QuerierResult, StdResult, Uint128, from_binary, testing::*};
+    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, may_load}};
     use crate::contract::{init};
     use crate::order_queues::OrderQueue;
     use cosmwasm_std::{Api, InitResponse, to_binary};
-    use secret_toolkit::utils::{Query};
+    use crate::contract::query;
     use crate::{msg::{InitMsg, 
-        LimitOrderState
+        LimitOrderState,
+        AmmSimulationQuery,
+        AmmPairSimulationResponse
     }};
 
     use cosmwasm_storage::{ReadonlyPrefixedStorage};
@@ -48,6 +50,8 @@ mod tests {
             "factorykey".to_string(),
             AssetInfo {
                 is_native_token: true,
+                decimal_places: 6,
+                min_order_amount: Uint128(1),
                 token: None,
                 native_token: Some(
                     NativeToken{denom:"uscrt".to_string()}
@@ -55,6 +59,8 @@ mod tests {
             },
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -82,6 +88,8 @@ mod tests {
         let token1_info: AssetInfo=load(&deps.storage, TOKEN1_DATA).unwrap();
         assert_eq!(token1_info, AssetInfo {
             is_native_token: true,
+            decimal_places: 6,
+            min_order_amount: Uint128(1),
             token: None,
             native_token: Some(
                 NativeToken{denom:"uscrt".to_string()}
@@ -91,6 +99,8 @@ mod tests {
         let token2_info: AssetInfo=load(&deps.storage, TOKEN2_DATA).unwrap();
         assert_eq!(token2_info, AssetInfo {
             is_native_token: false,
+            decimal_places: 18,
+            min_order_amount: Uint128(1000000000000),
             token: Some(
                 Token {
                     contract_addr: HumanAddr("token2address".to_string()),
@@ -109,6 +119,8 @@ mod tests {
             "factorykey".to_string(),
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -119,6 +131,8 @@ mod tests {
             },
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -239,6 +253,8 @@ mod tests {
             "factorykey".to_string(),
             AssetInfo {
                 is_native_token: true,
+                decimal_places: 6,
+                min_order_amount: Uint128(1),
                 token: None,
                 native_token: Some(
                     NativeToken{denom:"uscrt".to_string()}
@@ -246,6 +262,8 @@ mod tests {
             },
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -347,12 +365,17 @@ mod tests {
 
     #[test]
     fn test_get_limit_order_to_trigger() {
+        // Test Limit Orders
+        // 1 Order - price 10, quantity 10
+        // 2 Order - price 9, quantity 2 
         let (init_result, mut deps) = init_helper(
             HumanAddr("factoryaddress".to_string()),
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 6,
+                min_order_amount: Uint128(1),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -363,6 +386,8 @@ mod tests {
             },
             AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -384,10 +409,10 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("bob".to_string()), 
-            amount: Uint128(10),
+            amount: Uint128(2),
             msg: to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: true,
-                price: Uint128(40)
+                price: Uint128(9)
             }).unwrap()
         };
 
@@ -399,31 +424,164 @@ mod tests {
             handle_result.err().unwrap()
         );
 
-        
+        // Alice send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("alice".to_string()), 
+            amount: Uint128(10),
+            msg: to_binary(&HandleMsg::CreateLimitOrder {
+                is_bid: true,
+                price: Uint128(10)
+            }).unwrap()
+        };
+
+        let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        );      
+
         use serde::{Deserialize, Serialize};
         #[derive(Debug)]
-        struct MyMockQuerier {}
+        struct MyMockQuerier {
+            expected_bid_base_request: Vec<u8>,
+            expected_bid_base_response: AmmPairSimulationResponse,
+            expected_bid_amount_request: Option<Vec<u8>>,
+            expected_bid_amount_response: Option<AmmPairSimulationResponse>,
+            expected_bid_amount2_request: Option<Vec<u8>>,
+            expected_bid_amount2_response: Option<AmmPairSimulationResponse>,
+            expected_ask_base_request: Vec<u8>,
+            expected_ask_base_response: AmmPairSimulationResponse,
+            expected_ask_amount_request: Option<Vec<u8>>,
+            expected_ask_amount_response: Option<AmmPairSimulationResponse>,
+            expected_ask_amount2_request: Option<Vec<u8>>,
+            expected_ask_amount2_response: Option<AmmPairSimulationResponse>,
+        }
+
         #[derive(Serialize, Deserialize, Debug)]
         pub struct MockedSimulation {
             pub return_amount: Uint128,
             pub spread_amount: Uint128,
             pub commission_amount: Uint128
         }
-
-        impl Querier for MyMockQuerier {
-            fn raw_query(&self, _request: &[u8]) -> QuerierResult {
-                Ok(to_binary(&MockedSimulation {
-                    return_amount: Uint128(1),
-                    spread_amount: Uint128(1),
-                    commission_amount: Uint128(1)
-                }))
+        
+        pub fn space_pad(message: &mut Vec<u8>, block_size: usize) -> &mut Vec<u8> {
+            let len = message.len();
+            let surplus = len % block_size;
+            if surplus == 0 {
+                return message;
             }
+        
+            let missing = block_size - surplus;
+            message.reserve(missing);
+            message.extend(std::iter::repeat(b' ').take(missing));
+            message
         }
 
-        let mocked_deps = deps.change_querier(|_| MyMockQuerier {});
-        
-        use crate::contract::query;
+        pub fn check_mock_request(msg: Vec<u8>) -> Vec<u8>{
+            let mut expected_msg = msg.clone();
+            space_pad(&mut expected_msg, 256);
+            let expected_request: QueryRequest<AmmSimulationQuery> =
+            QueryRequest::Wasm(WasmQuery::Smart {
+                contract_addr: HumanAddr("ammpairaddress".to_string()),
+                callback_code_hash: "ammpairhash".to_string(),
+                msg: Binary(expected_msg),
+            });
+            to_vec(&expected_request).unwrap()       
+        }
 
+        impl Querier for MyMockQuerier {
+            fn raw_query(&self, request: &[u8] ) -> QuerierResult {
+                let bid_base_req = check_mock_request(self.expected_bid_base_request.clone());
+                if request == bid_base_req {
+                    return Ok(to_binary(&MockedSimulation {
+                        return_amount: self.expected_bid_base_response.return_amount,
+                        spread_amount: self.expected_bid_base_response.spread_amount,
+                        commission_amount: self.expected_bid_base_response.commission_amount
+                    }));
+                }
+                if self.expected_bid_amount_request.clone() != None {
+                    let bid_amount_req = check_mock_request(self.expected_bid_amount_request.clone().unwrap());
+                    if request == bid_amount_req {
+                        return Ok(to_binary(&MockedSimulation {
+                            return_amount: self.expected_bid_amount_response.as_ref().unwrap().return_amount,
+                            spread_amount: self.expected_bid_amount_response.as_ref().unwrap().spread_amount,
+                            commission_amount: self.expected_bid_amount_response.as_ref().unwrap().commission_amount
+                        }));
+                    }  
+                }
+                
+                if self.expected_bid_amount2_request.clone() != None { 
+                    let bid_amount2_req = check_mock_request(self.expected_bid_amount2_request.clone().unwrap());
+                    if request == bid_amount2_req {
+                        return Ok(to_binary(&MockedSimulation {
+                            return_amount: self.expected_bid_amount2_response.as_ref().unwrap().return_amount,
+                            spread_amount: self.expected_bid_amount2_response.as_ref().unwrap().spread_amount,
+                            commission_amount: self.expected_bid_amount2_response.as_ref().unwrap().commission_amount
+                        }));
+                    } 
+                }
+                 
+                let ask_base_req = check_mock_request(self.expected_ask_base_request.clone());
+                if request == ask_base_req {
+                    return Ok(to_binary(&MockedSimulation {
+                        return_amount: self.expected_ask_base_response.return_amount,
+                        spread_amount: self.expected_ask_base_response.spread_amount,
+                        commission_amount: self.expected_ask_base_response.commission_amount
+                    }));
+                }
+
+                if self.expected_ask_amount_request.clone() != None {
+                    let ask_amount_req = check_mock_request(self.expected_ask_amount_request.clone().unwrap());
+                    if request == ask_amount_req {
+                        return Ok(to_binary(&MockedSimulation {
+                            return_amount: self.expected_ask_amount_response.as_ref().unwrap().return_amount,
+                            spread_amount: self.expected_ask_amount_response.as_ref().unwrap().spread_amount,
+                            commission_amount: self.expected_ask_amount_response.as_ref().unwrap().commission_amount
+                        }));
+                    }  
+                }
+
+                if self.expected_ask_amount2_request.clone() != None { 
+                    let ask_amount2_req = check_mock_request(self.expected_ask_amount2_request.clone().unwrap());
+                    if request == ask_amount2_req {
+                        return Ok(to_binary(&MockedSimulation {
+                            return_amount: self.expected_ask_amount2_response.as_ref().unwrap().return_amount,
+                            spread_amount: self.expected_ask_amount2_response.as_ref().unwrap().spread_amount,
+                            commission_amount: self.expected_ask_amount2_response.as_ref().unwrap().commission_amount
+                        }));
+                    } 
+                }
+                return Ok(to_binary(&request))
+            }
+        }
+        
+        // Test 1 => AMM Base Price = 11 && Expected False
+        let mocked_deps = deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(11),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(0),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+        
         let query_msg = QueryMsg::CheckOrderBookTrigger {};
         let query_result = query(&mocked_deps, query_msg);
 
@@ -431,5 +589,420 @@ mod tests {
 
         assert_eq!(needs_trigger, false);
         
+        // Test 2 => AMM Base Price = 10 && AMM Amount = 10.1 && Expected False
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"10"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(0),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+
+        // Test 3 => AMM Base Price = 9 && AMM Amount = 10 && Expected True
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"10"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(9),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(0),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, true);
+
+        // Test 4 => AMM Base Price = 7 && AMM Amount = 11 && AMM Amount2 = 8 && Expected True
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(7),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"10"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_bid_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"2"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount2_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(7),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(0),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, true);
+
+       // Test 5 => AMM Base Price = 9 && AMM Amount = 11 && AMM Amount2 = 10 && Expected False
+        let mut mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"10"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_bid_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"2"}}}"#.as_bytes().to_vec()),
+            expected_bid_amount2_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(9),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(0),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+
+        // SEND ASKS
+        // Charlie send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("charlie".to_string()), 
+            amount: Uint128(11000000000000),
+            msg: to_binary(&HandleMsg::CreateLimitOrder {
+                is_bid: false,
+                price: Uint128(11)
+            }).unwrap()
+        };
+
+        let handle_result = handle(&mut mocked_deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        );        
+
+        // Rob send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("rob".to_string()), 
+            amount: Uint128(2000000000000),
+            msg: to_binary(&HandleMsg::CreateLimitOrder {
+                is_bid: false,
+                price: Uint128(12)
+            }).unwrap()
+        };
+
+        let handle_result = handle(&mut mocked_deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        );   
+
+        // ASK Test 1 => AMM Base Price = 10 && Expected False
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999),
+                spread_amount: Uint128(9999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: None,
+            expected_ask_amount_response: None,
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+
+        // Test 2 => AMM Base Price = 11 && AMM Amount = 10 && Expected False
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999),
+                spread_amount: Uint128(9999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(11),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"11000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+
+        // Test 3 => AMM Base Price = 12 && AMM Amount = 11 && Expected True
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999),
+                spread_amount: Uint128(9999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(11),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"11000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, true);
+
+        // Test 4 => AMM Base Price = 14 && AMM Amount = 10 && AMM Amount2 = 13 && Expected True
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999),
+                spread_amount: Uint128(9999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(14),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"11000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(8),
+                spread_amount: Uint128(2),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"2000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount2_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(12),
+                spread_amount: Uint128(1),
+                commission_amount: Uint128(0)
+            }),
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, true);
+
+        // Test 5 => AMM Base Price = 12 && AMM Amount = 10 && AMM Amount2 = 11 && Expected False
+        let mut mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999),
+                spread_amount: Uint128(9999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(12),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"11000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(10),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"2000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount2_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(11),
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            }),
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+    }
+
+    #[test]
+    fn test_query_info_pair() {
+        let (init_result, mut deps) = init_helper(
+            HumanAddr("factoryaddress".to_string()),
+            "factoryhash".to_string(),
+            "factorykey".to_string(),
+            AssetInfo {
+                is_native_token: true,
+                decimal_places: 6,
+                min_order_amount: Uint128(1),
+                token: None,
+                native_token: Some(
+                    NativeToken{denom:"uscrt".to_string()}
+                )
+            },
+            AssetInfo {
+                is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1000000000000),
+                token: Some(
+                    Token {
+                        contract_addr: HumanAddr("token2address".to_string()),
+                        token_code_hash: "token2hash".to_string()
+                    }
+                ),
+                native_token: None
+            },
+            HumanAddr("ammpairaddress".to_string()),
+            "ammpairhash".to_string()
+        );
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+
+        let query_msg = QueryMsg::OrderBookPairInfo {};
+        let query_result = query(&deps, query_msg);
+
+        let result:[AmmAssetInfo; 2] = from_binary(&query_result.unwrap()).unwrap();
+        assert_eq!(result[0],AmmAssetInfo::NativeToken {
+            denom: "uscrt".to_string()
+        });
+        assert_eq!(result[1],AmmAssetInfo::Token {
+            contract_addr: HumanAddr("token2address".to_string()),
+            token_code_hash: "token2hash".to_string(),
+            viewing_key: "".to_string()
+        });
     }
 }

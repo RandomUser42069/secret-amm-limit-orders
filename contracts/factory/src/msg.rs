@@ -1,4 +1,4 @@
-use cosmwasm_std::{CanonicalAddr, HumanAddr};
+use cosmwasm_std::{CanonicalAddr, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use secret_toolkit::utils::Query;
 use serde::{Deserialize, Serialize};
@@ -104,6 +104,8 @@ pub struct SecretOrderBookContract {
 #[serde(rename_all = "snake_case")]
 pub struct AssetInfo {
     pub is_native_token: bool,
+    pub decimal_places: u8,
+    pub min_order_amount: Uint128,
     pub token: Option<Token>,
     pub native_token: Option<NativeToken>
 }

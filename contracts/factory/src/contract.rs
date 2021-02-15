@@ -1,4 +1,6 @@
-use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, to_binary};
+use std::u128;
+
+use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, Uint128, to_binary};
 
 use crate::{msg::{AmmAssetInfo, AmmPairResponse, AmmQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, NativeToken, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContract, SecretOrderBookContractInitMsg, Token}, rand::sha_256};
 use crate::state::{save, load, may_load};
@@ -121,16 +123,20 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     let response: AmmPairResponse =
     AmmQueryMsg::Pair {}.query(&deps.querier, amm_pair_hash.to_string(), amm_pair_address.to_owned())?;
 
-    let token1_info: AssetInfo = match response.asset_infos[0].clone() {
+    let mut token1_info: AssetInfo = match response.asset_infos[0].clone() {
         AmmAssetInfo::NativeToken { denom } => AssetInfo {
             is_native_token: true,
+            decimal_places: 6,
+            min_order_amount: Uint128(0),
             token: None,
             native_token: Some(NativeToken {
                 denom
             })
         },
-        crate::msg::AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
+        AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
             is_native_token: false,
+            decimal_places: 0,
+            min_order_amount: Uint128(0),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash
@@ -139,16 +145,20 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
         }
     };
 
-    let token2_info: AssetInfo = match response.asset_infos[1].clone() {
+    let mut token2_info: AssetInfo = match response.asset_infos[1].clone() {
         AmmAssetInfo::NativeToken { denom } => AssetInfo {
             is_native_token: true,
             token: None,
+            decimal_places: 6,
+            min_order_amount: Uint128(0),
             native_token: Some(NativeToken {
                 denom
             })
         },
         crate::msg::AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
             is_native_token: false,
+            decimal_places: 0,
+            min_order_amount: Uint128(0),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash
@@ -157,6 +167,46 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
         }
     };
 
+    let token1_symbol:String;
+    let token2_symbol:String;
+    //query tokens info and get symbols from Addresses
+    match token1_info.clone().is_native_token {
+        true => token1_symbol="SCRT".to_string(),
+        false => {
+            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.clone().token.unwrap().token_code_hash, token1_info.clone().token.unwrap().contract_addr).unwrap();
+            token1_symbol = response_token1.clone().symbol;
+            token1_info.decimal_places = response_token1.clone().decimals;
+        }
+    }
+    match token2_info.clone().is_native_token {
+        true => token2_symbol="SCRT".to_string(),
+        false => {
+            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.clone().token.unwrap().token_code_hash, token2_info.clone().token.unwrap().contract_addr).unwrap();
+            token2_symbol = response_token2.clone().symbol;
+            token2_info.decimal_places = response_token2.clone().decimals;
+        }
+    }
+
+    //Define min order bids, this needs to be done because AMM will on swap amounts that will give > 0 value swapped
+    //So if we have 18 decimal places vs 6 decimal places the min bid needs to be 1 and 18-6=12 zeroes
+    let mut token1_min_order_zeroes:i32;
+    if token1_info.decimal_places > token2_info.decimal_places {
+        token1_min_order_zeroes = token1_info.decimal_places as i32 - token2_info.decimal_places as i32;
+        token1_min_order_zeroes = token1_min_order_zeroes.abs();
+    } else {
+        token1_min_order_zeroes = 0
+    }
+    let mut token2_min_order_zeroes:i32;
+    if token2_info.decimal_places > token1_info.decimal_places {
+        token2_min_order_zeroes = token2_info.decimal_places as i32 - token1_info.decimal_places as i32;
+        token2_min_order_zeroes = token2_min_order_zeroes.abs();
+    } else {
+        token2_min_order_zeroes = 0
+    }
+    
+    token1_info.min_order_amount = Uint128(u128::pow(10,token1_min_order_zeroes as u32));
+    token2_info.min_order_amount = Uint128(u128::pow(10,token2_min_order_zeroes as u32));
+    //TODO: Deal with duplicated token symbols
     let initmsg = SecretOrderBookContractInitMsg {
         factory_hash: env.contract_code_hash,
         factory_address: env.contract.address,
@@ -171,24 +221,6 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
         const BLOCK_SIZE: usize = BLOCK_SIZE;
     }
 
-    let token1_symbol:String;
-    let token2_symbol:String;
-    //query tokens info and get symbols from Addresses
-    match token1_info.clone().is_native_token {
-        true => token1_symbol="SCRT".to_string(),
-        false => {
-            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.clone().token.unwrap().token_code_hash, token1_info.clone().token.unwrap().contract_addr);
-            token1_symbol = response_token1.unwrap().symbol;
-        }
-    }
-    match token2_info.clone().is_native_token {
-        true => token2_symbol="SCRT".to_string(),
-        false => {
-            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.clone().token.unwrap().token_code_hash, token2_info.clone().token.unwrap().contract_addr);
-            token2_symbol = response_token2.unwrap().symbol;
-        }
-    }
-    //TODO: Deal with duplicated token symbols
     let cosmosmsg =
         initmsg.to_cosmos_msg(format!("({}) Secret Order Book - {}/{}",secret_order_book_contract_code_id,token1_symbol,token2_symbol).to_string(), secret_order_book_contract_code_id, secret_order_book_contract_code_hash, None)?;
 

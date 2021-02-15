@@ -2,9 +2,9 @@
 mod tests {
     use super::*;
     use crate::{contract::{PREFIX_VIEW_KEY, query}, msg::{AssetInfo, NativeToken, ResponseStatus, SecretOrderBookContract, Token}};
-    use cosmwasm_std::{Extern, HumanAddr, StdResult, testing::*};
+    use cosmwasm_std::{Extern, HumanAddr, StdResult, Uint128, testing::*};
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
-    use schemars::_serde_json::to_string;
+    use schemars::_serde_json::{de, to_string};
     use std::any::Any;
     use crate::state::{save, load, may_load};
     use crate::contract::{init, handle,SECRET_ORDER_BOOK_CONTRACT_CODE_ID, FACTORY_KEY, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH};
@@ -231,12 +231,16 @@ mod tests {
             auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
             contract_address: HumanAddr("contract1".to_string()),
             token1_info: AssetInfo {
+                decimal_places: 18,
+                min_order_amount: Uint128(1000000000000),
                 is_native_token: false,
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
             token2_info: AssetInfo {
                 is_native_token: true,
+                decimal_places:6,
+                min_order_amount: Uint128(1),
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             },
@@ -255,11 +259,15 @@ mod tests {
             contract_address: HumanAddr("contract2".to_string()),
             token1_info: AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
             token2_info: AssetInfo {
                 is_native_token: false,
+                decimal_places: 18,
+                min_order_amount: Uint128(1),
                 token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
@@ -288,13 +296,17 @@ mod tests {
             QueryAnswer::SecretOrderBooks { secret_order_book } => {
                 assert_eq!(secret_order_book.unwrap().asset_infos, vec![
                     AssetInfo {
+                        decimal_places: 18,
                         is_native_token: false,
+                        min_order_amount: Uint128(1000000000000),
                         token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                         native_token: None
                     },
                     AssetInfo {
                         is_native_token: true,
                         token: None,
+                        min_order_amount: Uint128(1),
+                        decimal_places: 6,
                         native_token: Some(NativeToken{denom:"uscrt".to_string()})
                     }
                 ])
@@ -319,12 +331,16 @@ mod tests {
                 assert_eq!(secret_order_book.unwrap().asset_infos, 
                     vec![
                         AssetInfo {
+                            decimal_places: 18,
                             is_native_token: false,
+                            min_order_amount: Uint128(1),
                             token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         },
                         AssetInfo {
                             is_native_token: false,
+                            decimal_places: 18,
+                            min_order_amount: Uint128(1),
                             token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         }

@@ -114,7 +114,7 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
         let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),false,amount);
         if order_token_index == None {
             return Err(StdError::generic_err(format!(
-                "Receive handler not found!"
+                "Invalid Token or Amount Sent < Minimum Amount"
             )));
         }
         return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, from, is_bid, price)
@@ -134,7 +134,7 @@ pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
     let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),true, env.clone().message.sent_funds[0].amount);
     if order_token_index == None {
         return Err(StdError::generic_err(format!(
-            "Receive handler not found!"
+            "Invalid Token or Amount Sent < Minimum Amount"
         )));
     }
     return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, env.clone().message.sender, is_bid, price)
@@ -159,13 +159,13 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
 
     match token1_info.is_native_token {
         true => {
-            if is_native_token {
+            if is_native_token && amount >= token1_info.min_order_amount {
                 balances[0] = amount;
                 order_token_index = Some(0);
             }
         },
         false => {
-            if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender {
+            if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender && amount >= token1_info.min_order_amount{
                 balances[0] = amount;
                 order_token_index = Some(0);
             }
@@ -174,13 +174,13 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
 
     match token2_info.is_native_token {
         true => {
-            if is_native_token {
+            if is_native_token && amount >= token2_info.min_order_amount {
                 balances[1] = amount;
                 order_token_index = Some(1);
             }
         },
         false => {
-            if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender {
+            if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender && amount >= token2_info.min_order_amount{
                 balances[1] = amount;
                 order_token_index = Some(1);
             }
@@ -408,10 +408,20 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
+        QueryMsg::OrderBookPairInfo {} => to_binary(&get_order_book_pair_info(deps)?),
         QueryMsg::GetLimitOrder {user_address, user_viewkey} => to_binary(&get_limit_order(deps, user_address, user_viewkey)?),
         QueryMsg::CheckOrderBookTrigger {} => to_binary(&check_order_book_trigger(deps)?),
         _ => Err(StdError::generic_err("Handler not found!"))
     }
+}
+
+fn get_order_book_pair_info<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>
+) -> StdResult<[AssetInfo;2]> {
+    let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+    let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
+
+    return Ok([token1_data,token2_data]);
 }
 
 fn get_limit_order<S: Storage, A: Api, Q: Querier>(
@@ -500,11 +510,10 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     AmmSimulationQuery::simulation {
         offer_asset: AmmSimulationOfferAsset{
             info: asset.clone(),
-            amount: Uint128(1)
+            amount: token_data.min_order_amount
         }
     }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
 
-    
     for _ in 1..10 { // Max limit of 10 limit orders to check
         // Peek order, compare order price with base price + spread
         if let Some(order_book_peek) = order_book.peek() {
