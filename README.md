@@ -36,9 +36,7 @@ TODO:
 ### Secret Order Book Contract
 * Handles
     * Receive => Create Limit Order from SNIP20 Tokens
-        * ***TODO: Receive the max slipage too***
     * ReceiveNativeToken => Create Limit Order from the native token
-        * ***TODO: Receive the max slipage too***
     * WithdrawLimitOrder => Widthdraw assets locked on a limit order
     * ***TODO: TriggerLimitOrders***
 * Queries

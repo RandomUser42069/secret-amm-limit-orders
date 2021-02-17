@@ -215,7 +215,7 @@ pub struct LimitOrderState {
 pub struct AssetInfo {
     pub is_native_token: bool,
     pub decimal_places: u8,
-    pub min_order_amount: Uint128,
+    pub base_amount: Uint128,
     pub token: Option<Token>,
     pub native_token: Option<NativeToken>
 }

@@ -159,13 +159,13 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
 
     match token1_info.is_native_token {
         true => {
-            if is_native_token && amount >= token1_info.min_order_amount {
+            if is_native_token{
                 balances[0] = amount;
                 order_token_index = Some(0);
             }
         },
         false => {
-            if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender && amount >= token1_info.min_order_amount{
+            if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender{
                 balances[0] = amount;
                 order_token_index = Some(0);
             }
@@ -174,13 +174,13 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
 
     match token2_info.is_native_token {
         true => {
-            if is_native_token && amount >= token2_info.min_order_amount {
+            if is_native_token {
                 balances[1] = amount;
                 order_token_index = Some(1);
             }
         },
         false => {
-            if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender && amount >= token2_info.min_order_amount{
+            if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender {
                 balances[1] = amount;
                 order_token_index = Some(1);
             }
@@ -202,6 +202,15 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     // Create new user limit order
     let user_address = &deps.api.canonical_address(&from)?;
+
+    // check if this user already has a limit order here
+    let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, user_address.as_slice())?;
+    if limit_order_data != None {
+        return Err(StdError::generic_err(format!(
+            "User already has a limit order for this pair. To create a new one withdraw the other one!"
+        ))); 
+    }
 
     let limit_order = LimitOrderState {
         is_bid,
@@ -505,12 +514,13 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         }
     };
 
-    // Get Base Price => Lowest Amount possible
+    // Get Base Price => Simulate 1 lowest unit of the token, add spread and commition.
+    // This is the the base price of the swap without the amount counted
     let response_amm_base_simulation: AmmPairSimulationResponse =
     AmmSimulationQuery::simulation {
         offer_asset: AmmSimulationOfferAsset{
             info: asset.clone(),
-            amount: token_data.min_order_amount
+            amount: token_data.base_amount,
         }
     }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
 
@@ -519,29 +529,46 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         if let Some(order_book_peek) = order_book.peek() {
             let would_trigger_base_price: bool;
             if is_bid {
-                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount
+                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount + response_amm_base_simulation.commission_amount
             } else {
-                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount
+                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount + response_amm_base_simulation.commission_amount
             }
 
             if would_trigger_base_price {
                 // Now we know that this order is a candidate to trigger but need to simulate again with his amount 
                 let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_book_peek.id.as_slice()).unwrap();
-               
+                let amount: Uint128 = limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize];
+
                 let response_amm_order_simulation: AmmPairSimulationResponse =
                 AmmSimulationQuery::simulation {
                     offer_asset: AmmSimulationOfferAsset{
                         info: asset.clone(),
-                        amount: limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize]
+                        amount
                     }
                 }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
                 
-                // Here we have the final simulation for this, and check if it can be triggered with 0 slippage
+                // Here we have the final simulation for this and check if the returned amount coorespond to the amount requested on the limit order
+                // minimum bid       -       x
+                // amount bidded     -    AMM returned value
+                // Then compare x with the limit price
                 let would_trigger_total_amount: bool;
-                if is_bid {
-                    would_trigger_total_amount = order_book_peek.price >= response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount
+                let returned_total_amount: Uint128 = response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount + response_amm_order_simulation.commission_amount;
+                // amount bidded / minimum bid   ||   minimum bid / amount bidded
+                let amount_ratio: Uint128;
+                // amm returned value / amount ratio  ||  amm returned value * amount ratio
+                let amm_price_ratio: Uint128;
+                if amount >= token_data.base_amount {
+                    amount_ratio = Uint128::multiply_ratio(&Uint128(1), amount,token_data.base_amount);
+                    amm_price_ratio = Uint128::multiply_ratio(&returned_total_amount, Uint128(1), amount_ratio);
                 } else {
-                    would_trigger_total_amount = order_book_peek.price <= response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount
+                    amount_ratio = Uint128::multiply_ratio(&Uint128(1), token_data.base_amount,amount);
+                    amm_price_ratio = Uint128::multiply_ratio(&returned_total_amount, amount_ratio, Uint128(1));
+                };
+                
+                if is_bid {
+                    would_trigger_total_amount = order_book_peek.price >= amm_price_ratio
+                } else {
+                    would_trigger_total_amount = order_book_peek.price <= amm_price_ratio
                 }
 
                 if would_trigger_total_amount {

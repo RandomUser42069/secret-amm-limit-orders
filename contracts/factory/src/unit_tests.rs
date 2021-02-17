@@ -232,7 +232,7 @@ mod tests {
             contract_address: HumanAddr("contract1".to_string()),
             token1_info: AssetInfo {
                 decimal_places: 18,
-                min_order_amount: Uint128(1000000000000),
+                base_amount: Uint128(1000000000000000000),
                 is_native_token: false,
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
@@ -240,7 +240,7 @@ mod tests {
             token2_info: AssetInfo {
                 is_native_token: true,
                 decimal_places:6,
-                min_order_amount: Uint128(1),
+                base_amount: Uint128(1000000),
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             },
@@ -260,14 +260,14 @@ mod tests {
             token1_info: AssetInfo {
                 is_native_token: false,
                 decimal_places: 18,
-                min_order_amount: Uint128(1),
+                base_amount: Uint128(1000000000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
             token2_info: AssetInfo {
                 is_native_token: false,
                 decimal_places: 18,
-                min_order_amount: Uint128(1),
+                base_amount: Uint128(1000000000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
@@ -298,14 +298,14 @@ mod tests {
                     AssetInfo {
                         decimal_places: 18,
                         is_native_token: false,
-                        min_order_amount: Uint128(1000000000000),
+                        base_amount: Uint128(1000000000000000000),
                         token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                         native_token: None
                     },
                     AssetInfo {
                         is_native_token: true,
                         token: None,
-                        min_order_amount: Uint128(1),
+                        base_amount: Uint128(1000000),
                         decimal_places: 6,
                         native_token: Some(NativeToken{denom:"uscrt".to_string()})
                     }
@@ -333,14 +333,14 @@ mod tests {
                         AssetInfo {
                             decimal_places: 18,
                             is_native_token: false,
-                            min_order_amount: Uint128(1),
+                            base_amount: Uint128(1000000000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         },
                         AssetInfo {
                             is_native_token: false,
                             decimal_places: 18,
-                            min_order_amount: Uint128(1),
+                            base_amount: Uint128(1000000000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         }

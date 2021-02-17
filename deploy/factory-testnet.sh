@@ -34,7 +34,7 @@ label=$(date +"%T")
 deployer_name_a=a
 
 STORE_TX_HASH=$( 
-  secretcli tx compute instantiate $factory_code_id '{"entropy": "'$RANDOM'", "secret_order_book_code_id": 1, "secret_order_book_code_hash": "aa", "amm_factory_contract_address": "secret1sv2wmfs5z68atl9sgqqm3kpykh92u0qa48h5p2", "amm_factory_contract_hash": "0788b921caab1cd6f5156db3404e7f90061bcf3a871ad7e253172b5e353f7db0"}' --from $deployer_name_a --gas 1500000 --label Secret_Order_Book_Factory_$label -b block -y |
+  secretcli tx compute instantiate $factory_code_id '{"entropy": "'$RANDOM'", "secret_order_book_code_id": 1, "secret_order_book_code_hash": "aa", "amm_factory_contract_address": "secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy", "amm_factory_contract_hash": "0xb66c6aca95004916baa13f8913ff1222c3e1775aaaf60f011cfaba7296d59d2c"}' --from $deployer_name_a --gas 1500000 --label Secret_Order_Book_Factory_$label -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
