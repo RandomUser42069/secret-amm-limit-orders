@@ -1,6 +1,6 @@
-use cosmwasm_std::{Api, BankMsg, Binary, Coin, CosmosMsg, Empty, Env, Extern, HandleResponse, HumanAddr, InitResponse, LogAttribute, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
+use cosmwasm_std::{Decimal, Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg, Empty, Env, Extern, HandleResponse, HumanAddr, InitResponse, LogAttribute, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
-use secret_toolkit::{utils::{HandleCallback, Query}};
+use secret_toolkit::{snip20, utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
 use crate::{msg::{AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, ResponseStatus, Snip20Msg}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
@@ -89,7 +89,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         // Receiver to CreateLimitOrder from SCRT
         HandleMsg::ReceiveNativeToken {is_bid, price} => try_receive_native_token(deps, env, is_bid, price),
         HandleMsg::WithdrawLimitOrder {} => try_withdraw_limit_order(deps, env), 
-        HandleMsg::TriggerLimitOrders {test_amm_price} => try_trigger_limit_orders(deps, env, test_amm_price), 
+        HandleMsg::TriggerLimitOrders {} => try_trigger_limit_orders(deps, env), 
         _ => Err(StdError::generic_err("Handler not found!"))
     } 
 }
@@ -134,7 +134,7 @@ pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
     let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),true, env.clone().message.sent_funds[0].amount);
     if order_token_index == None {
         return Err(StdError::generic_err(format!(
-            "Invalid Token or Amount Sent < Minimum Amount"
+            "Invalid Token or Amount Sent"
         )));
     }
     return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, env.clone().message.sender, is_bid, price)
@@ -338,78 +338,72 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
 
 pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
-    test_amm_price: Uint128
+    env: Env
 ) -> StdResult<HandleResponse>{
-    // 1. get AMM price for this pair
-    let amm_price = test_amm_price;
-    // 2. Bid Order Book
-    execute_trigger(deps, env.clone(), amm_price, true);
-    // 3. Ask Order Book
-    execute_trigger(deps, env.clone(), amm_price, false);
-   
-    /*return Err(StdError::generic_err(format!(
-        "{:?},{}",
-        triggered_limit_orders,
-        order_total_quantity
-    )));*/
+    // 1. Check Swappable Limit Orders Order Books
+    let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, true);
+    if order_id != None {
+        let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+        let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
+        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+    
+        let swap_response = snip20::send_msg(
+            amm_pair_address, 
+            limit_order_state.unwrap().balances[0], 
+            Some(Binary::from(r#"{ "swap": { } }"#.as_bytes())), 
+            None, 
+            256, 
+            token1_data.clone().token.unwrap().token_code_hash, 
+            token1_data.clone().token.unwrap().contract_addr
+        );
+    
+        return Err(StdError::generic_err(format!(
+            "{:?}",
+            swap_response
+        )));
+        //try_execute_swap_on_limit_order(deps, env,order_id.unwrap(), limit_order_state.unwrap());
+        //return Ok(HandleResponse::default())
+    }
+    let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
+    if order_id != None {
+        return Ok(HandleResponse::default())
+    }
 
-    Ok(HandleResponse::default())
+    return Ok(HandleResponse::default())
 }
 
-pub fn execute_trigger<S: Storage, A: Api, Q: Querier>(
+pub fn try_execute_swap_on_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    amm_price: Uint128,
-    is_bid: bool
-) -> StdResult<bool> {
-    // 2. init loop
-    let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
-    let mut order_book:OrderQueue;
-    if is_bid {
-        order_book = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-    } else {
-        order_book = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
-    }
-    let mut triggered_limit_orders = vec![];
-    let mut order_total_quantity:Uint128 = Uint128(0);
-    loop {
-        // 2.1. Peek secret order book
-        let peek_bid = order_book.peek();
-        if peek_bid == None {break;}
-        // 2.2. if peek price >= AMM price => pop and save it to variable
-        let compare_prices: bool;
-        if is_bid { compare_prices = peek_bid.unwrap().price >= amm_price }
-        else { compare_prices = peek_bid.unwrap().price <= amm_price }
+    order_id: CanonicalAddr,
+    limit_order: LimitOrderState,
+) -> bool {
 
-        if compare_prices {
-            let triggered_order = order_book.pop().unwrap();
-            let limit_order_data:Option<LimitOrderState> = may_load(&limit_orders_data, triggered_order.id.as_slice())?;
-            if limit_order_data != None {
-                order_total_quantity = order_total_quantity + limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize];
-                triggered_limit_orders.push(triggered_order.id);
-            }
-        } else {
-            // 2.3. end loop when peek price fails to be > AMM price
-            break;
-        }
-    };
+    // ONLY BID FOR NOW
 
-    // 3. Send a single transaction to swap with all the peeked quantity on the variable
-
+    // 1.Execute the swap
     
-    // 4. If success, update all the limit orders triggered balance and status
+    // 1.1. Construct Message
+ 
+
+    // 1.2. Send Message to the token address
+
+    // Send Order Book Fee for the triggerer address!
+
+    // Remove Order from the Queue
+    
+    // Update Limit Order
     let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
-    for limit_order_id in &triggered_limit_orders {
-        let mut limit_order_data:LimitOrderState = load(&limit_orders_data, limit_order_id.as_slice()).unwrap();
-        limit_order_data.status = "Filled".to_string();
-        limit_order_data.balances = vec![
-            limit_order_data.balances[1], 
-            limit_order_data.balances[0]
-        ];
-        save(&mut limit_orders_data, limit_order_id.as_slice(), &limit_order_data)?;
-    }
-    Ok(true)
+    let mut modify_limit_order = limit_order;
+    modify_limit_order.status = "Filled".to_string();
+    modify_limit_order.balances = vec![
+        modify_limit_order.balances[1], // swap returned amount
+        Uint128(0)
+    ];
+    save(&mut limit_orders_data, order_id.as_slice(), &modify_limit_order);
+    
+    return true
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
@@ -469,16 +463,14 @@ fn get_limit_order<S: Storage, A: Api, Q: Querier>(
 fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
 ) -> StdResult<bool> {
-
-        let bid_to_trigger = get_limit_order_to_trigger(deps, true);
-        if bid_to_trigger != None {
+        let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, true);
+        if order_id != None {
             return Ok(true)
         }
-        let ask_to_trigger = get_limit_order_to_trigger(deps, false);
-        if ask_to_trigger != None {
+        let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
+        if order_id != None {
             return Ok(true)
         }
-
         return Ok(false)
 }
 
@@ -486,7 +478,7 @@ fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
 pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     is_bid: bool
-) -> Option<LimitOrderState> {
+) -> (Option<CanonicalAddr>, Option<LimitOrderState>) {
     let mut order_book: OrderQueue;
     let token_data: AssetInfo;
     let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
@@ -573,7 +565,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
 
                 if would_trigger_total_amount {
                     //This order is elligible for a trigger so return it
-                    return Some(limit_order_data.clone().unwrap())
+                    return (Some(order_book_peek.clone().id), Some(limit_order_data.clone().unwrap()))
                 } else {
                     // pop current order from the orderbook as it's not elligible for triggering
                     order_book.pop();
@@ -586,5 +578,5 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         }
     }
 
-    return None;
+    return (None, None);
 }

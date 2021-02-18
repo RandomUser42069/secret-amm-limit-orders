@@ -76,9 +76,7 @@ pub enum HandleMsg {
         price: Uint128
     },
     WithdrawLimitOrder {},
-    TriggerLimitOrders {
-        test_amm_price: Uint128
-    }
+    TriggerLimitOrders {}
 }
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

@@ -17,7 +17,8 @@
     "web-vitals": "^0.2.4",
     "react-bootstrap": "1.4.0",
     "bootstrap": "4.5.3",
-    "secretjs": "0.10.4"
+    "secretjs": "0.10.4",
+    "axios":"0.21.1"
   },
   "scripts": {
     "start": "react-scripts start",

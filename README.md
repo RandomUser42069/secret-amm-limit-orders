@@ -3,21 +3,26 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Interact with AMM
-    * On the creation of the limit order, add a max splipage input
-    * On the Triggerer query it needs to account for that splipage
+* Trigger function on the order contracts
+* Triggerer script
+    * Needs to have a wallet with SCRT for the gas prices on the triggers
+    * When the response is true for the check trigger, send the trigger execution
 * Create most basic frontend to interact with this contract
-    * Create Order Book Pairs
-        * secretcli q compute query secret1d3de9fsj0m6jkju94sc8yzecw7f6tfklydrwvc '{"pair": {"asset_infos": [{"token":{"contract_addr":"secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx","token_code_hash":"CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62","viewing_key":""}},{"token":{"contract_addr":"secret1ttg5cn3mv5n9qv8r53stt6cjx8qft8ut9d66ed","token_code_hash":"2DA545EBC441BE05C9FA6338F3353F35AC02EC4B02454BC49B1A66F4B9866AED","viewing_key":""}}]}}'
-    * Displays the AMM price
+    * Query All tokens from the backend: https://scrt-bridge-api.azurewebsites.net/tokens/?page=0&size=1000
+    * Query my Limit Orders if VK available
+    * When click on create 
+        * Query All AMM pairs from AMM Factory (Put on a list or something)
+        * After selecting one of the pairs:
+            * Query the current price on AMM (simulate)
+            * Query that pair on the secret order book factory to get the address order book
+            * Create pair if dont have the secret order book created
+
+    
     * Displays my Limit Orders
     * Create Limit Order on pairs available
     * Widthdraw from Limit Orders
-* Deploy to testnet
-* Create the Triggerer script
-    * Needs to have a wallet with SCRT for the gas prices on the triggers
+
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
-* As I'm aggregating the limit orders and doing a single transaction need to implement splipage calculations and correct distribution for the limit orders triggered
 * Descentralized way to check the trigger and trigger every block
 * Adapt to multiple limit orders per user on the same trading pair?
 

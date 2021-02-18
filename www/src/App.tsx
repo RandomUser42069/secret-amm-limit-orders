@@ -5,10 +5,13 @@ import { SigningCosmWasmClient } from 'secretjs';
 import ViewKeyButton from "./Containers/ViewKeyButton"
 import PairsAvailable from "./Containers/PairsAvailable"
 import 'bootstrap/dist/css/bootstrap.min.css';
+import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
+import axios from 'axios';
 
-const AMM_FACTORY_ADDRESS="secret1d3de9fsj0m6jkju94sc8yzecw7f6tfklydrwvc"
-const ORDERS_FACTORY_ADDRESS="secret1e3zr065dss0fuwtc2fn8lfq9wsn370vzaqphc0" 
- 
+const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
+const ORDERS_FACTORY_ADDRESS="secret1ef56jnpnfhul6pe5esnu46ywerzmplrr968g77" 
+const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
+
 function App() {
   const [client, setClient] = useState({
     ready: false,
@@ -23,8 +26,21 @@ function App() {
     value: null
   });
 
+  const [tokensData, setTokensData] = useState<any>(null);
+
   useEffect(() => {
-    setupKeplr(setClient)
+    async function init() {
+      setupKeplr(setClient);
+      const response = await axios.get("https://scrt-bridge-api.azurewebsites.net/tokens/?page=0&size=1000");
+      setTokensData([...response.data.tokens,{
+        dst_address: SSCRT_CONTRACT_ADDRESS,
+        decimals: 6,
+        display_props: {
+          symbol: "sSCRT"
+        }
+      }]);
+    }
+    init();
   }, [])
 
   if(!client.ready) {
@@ -38,19 +54,30 @@ function App() {
             viewKey={viewKey}
             setViewKey={setViewKey}
           />
-          <PairsAvailable 
-            AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
+          <CreateNewLimitOrder 
             ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+            AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
+            tokensData={tokensData}
             client={client}
             viewKey={viewKey.value}
           />
+          {
+            /*
+              <PairsAvailable 
+                AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
+                ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+                client={client}
+                viewKey={viewKey.value}
+              />
+            */
+          }
+          
       </div>
     );
   }
 }
 
 export default App;
-
 
 const setupKeplr = async (setClient: any) => {
   // Define sleep
@@ -164,3 +191,5 @@ const setupKeplr = async (setClient: any) => {
 declare global {
   interface Window { keplr: any, getOfflineSigner:any, getEnigmaUtils:any }
 }
+
+
