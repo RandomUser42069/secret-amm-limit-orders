@@ -57,6 +57,14 @@ pub enum FactoryHandleMsg {
         token1_info: AssetInfo,
         token2_info: AssetInfo,
     },
+    AddOrderBookToUser {
+        amm_pair_address: HumanAddr, 
+        user_address: HumanAddr
+    },
+    RemoveOrderBookFromUser {
+        amm_pair_address: HumanAddr, 
+        user_address: HumanAddr
+    },
 }
 
 impl HandleCallback for FactoryHandleMsg {
@@ -194,8 +202,11 @@ pub struct AmmPairSimulationResponse {
     pub spread_amount: Uint128,
     pub commission_amount: Uint128
 }
-
-
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct OrderBookPairResponse {
+    pub amm_pair_address: HumanAddr,
+    pub assets_info: [AssetInfo;2]
+}
 // State
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LimitOrderState {

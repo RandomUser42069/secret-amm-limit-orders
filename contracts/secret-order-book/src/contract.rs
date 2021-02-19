@@ -2,7 +2,7 @@ use cosmwasm_std::{Decimal, Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::{snip20, utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use crate::{msg::{AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryMsg, ResponseStatus, Snip20Msg}, state::{load, may_load, remove, save}};
+use crate::{msg::{AmmAssetInfo, AmmFactoryPairResponse, AmmFactoryQueryMsg, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, OrderBookPairResponse, QueryMsg, ResponseStatus, Snip20Msg}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
 pub const FACTORY_DATA: &[u8] = b"factory";
 pub const AMM_PAIR_DATA: &[u8] = b"ammpair";
@@ -212,6 +212,21 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         ))); 
     }
 
+    // Add this order book to this user on the factory
+    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
+    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
+    let factory_contract_hash: String = load(&factory_data, b"hash")?;
+    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+
+    let msg = FactoryHandleMsg::AddOrderBookToUser {
+        user_address: from,
+        amm_pair_address,
+    };
+
+    let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
+
+    //Create Limit order
     let limit_order = LimitOrderState {
         is_bid,
         status: "Active".to_string(),
@@ -243,7 +258,16 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
     }
 
-    Ok(HandleResponse::default())
+    Ok(HandleResponse {
+        messages: vec![
+            factory_response
+        ],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Status {
+            status: ResponseStatus::Success,
+            message: None,
+        })?),
+    })
 }
 
 pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
@@ -314,6 +338,21 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
             }
         }      
     }
+
+    // Remove this order book to this user on the factory
+    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
+    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
+    let factory_contract_hash: String = load(&factory_data, b"hash")?;
+    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+
+    let msg = FactoryHandleMsg::RemoveOrderBookFromUser {
+        user_address: env.message.sender,
+        amm_pair_address,
+    };
+
+    let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
+
     // remove the limit order 
     let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
     remove(&mut limit_orders_data, user_address.as_slice());
@@ -326,7 +365,8 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
     // Response
     Ok(HandleResponse {
         messages: vec![
-            transfer_result
+            transfer_result,
+            factory_response
         ],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Status {
@@ -418,13 +458,21 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     }
 }
 
+
 fn get_order_book_pair_info<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
-) -> StdResult<[AssetInfo;2]> {
+) -> StdResult<OrderBookPairResponse> {
     let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
     let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
+    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
 
-    return Ok([token1_data,token2_data]);
+    let response:OrderBookPairResponse = OrderBookPairResponse {
+        amm_pair_address,
+        assets_info: [token1_data,token2_data]
+    };
+
+    return Ok(response);
 }
 
 fn get_limit_order<S: Storage, A: Api, Q: Querier>(
@@ -506,7 +554,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         }
     };
 
-    // Get Base Price => Simulate 1 lowest unit of the token, add spread and commition.
+    // Get Base Price => Simulate 1 lowest unit of the token
     // This is the the base price of the swap without the amount counted
     let response_amm_base_simulation: AmmPairSimulationResponse =
     AmmSimulationQuery::simulation {
@@ -517,13 +565,13 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
 
     for _ in 1..10 { // Max limit of 10 limit orders to check
-        // Peek order, compare order price with base price + spread
+        // Peek order, compare order price with base price
         if let Some(order_book_peek) = order_book.peek() {
             let would_trigger_base_price: bool;
             if is_bid {
-                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount + response_amm_base_simulation.commission_amount
+                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount
             } else {
-                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount + response_amm_base_simulation.spread_amount + response_amm_base_simulation.commission_amount
+                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount
             }
 
             if would_trigger_base_price {
@@ -544,7 +592,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
                 // amount bidded     -    AMM returned value
                 // Then compare x with the limit price
                 let would_trigger_total_amount: bool;
-                let returned_total_amount: Uint128 = response_amm_order_simulation.return_amount + response_amm_order_simulation.spread_amount + response_amm_order_simulation.commission_amount;
+                let returned_total_amount: Uint128 = response_amm_order_simulation.return_amount;
                 // amount bidded / minimum bid   ||   minimum bid / amount bidded
                 let amount_ratio: Uint128;
                 // amm returned value / amount ratio  ||  amm returned value * amount ratio

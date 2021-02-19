@@ -23,6 +23,8 @@ pub const SECRET_ORDER_BOOK_CONTRACT_CODE_HASH: &[u8] = b"secretorderbookcontrac
 pub const FACTORY_KEY: &[u8] = b"factorykey";
 /// storage key for the secret order books
 pub const PREFIX_SECRET_ORDER_BOOKS: &[u8] = b"secretorderbooks";
+/// storage key for users to get on which order books they have limit orders
+pub const PREFIX_USER_ORDER_BOOKS: &[u8] = b"userorderbooks";
 /// storage key for the amm factory address
 pub const AMM_FACTORY_ADDRESS: &[u8] = b"ammfactoryaddress";
 /// storage key for the children contracts 
@@ -65,7 +67,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             contract_address,  
             token1_info, 
             token2_info
-        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address, token1_info, token2_info)
+        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address, token1_info, token2_info),
+        HandleMsg::AddOrderBookToUser { amm_pair_address, user_address } => try_add_order_book_to_user(deps, env, &amm_pair_address, &user_address),
+        HandleMsg::RemoveOrderBookFromUser {  amm_pair_address, user_address } => try_remove_order_book_to_user(deps, env, &amm_pair_address, &user_address)
     }
 }
 
@@ -249,6 +253,73 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     Ok(HandleResponse::default())
 }
 
+pub fn try_add_order_book_to_user<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amm_pair_address: &HumanAddr,
+    user_address: &HumanAddr
+) -> HandleResult {   
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
+    let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice())?;
+
+    if load_secret_order_book == None {
+        return Err(StdError::generic_err(
+            "Factory dont have this amm address pair!",
+        ));
+    } else if load_secret_order_book.clone().unwrap().contract_addr != env.message.sender {
+        return Err(StdError::generic_err(
+            "Sender is not the correct order book!",
+        ));
+    } else {
+        let mut user_order_books = PrefixedStorage::new(PREFIX_USER_ORDER_BOOKS, &mut deps.storage);
+        let current_order_books: Option<Vec<HumanAddr>> = may_load(&user_order_books, &deps.api.canonical_address(&user_address)?.as_slice())?;
+       
+        if current_order_books == None {
+            save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &vec![load_secret_order_book.clone().unwrap().contract_addr])?;
+        } else {
+            let mut new_user_order_books = current_order_books.unwrap();
+            new_user_order_books.push(load_secret_order_book.unwrap().contract_addr);
+            save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &new_user_order_books)?;
+        }
+    }
+
+    Ok(HandleResponse::default())
+}
+
+pub fn try_remove_order_book_to_user<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amm_pair_address: &HumanAddr,
+    user_address: &HumanAddr
+) -> HandleResult {   
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
+    let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice())?;
+
+    if load_secret_order_book == None {
+        return Err(StdError::generic_err(
+            "Factory dont have this amm address pair!",
+        ));
+    } else if load_secret_order_book.clone().unwrap().contract_addr != env.message.sender {
+        return Err(StdError::generic_err(
+            "Sender is not the correct order book!",
+        ));
+    } else {
+        let mut user_order_books = PrefixedStorage::new(PREFIX_USER_ORDER_BOOKS, &mut deps.storage);
+        let current_user_order_books: Option<Vec<HumanAddr>> = may_load(&user_order_books, &deps.api.canonical_address(&user_address)?.as_slice())?;
+       
+        let mut modified_user_order_books= current_user_order_books.clone().unwrap();
+        modified_user_order_books.retain(|x| x != &load_secret_order_book.clone().unwrap().contract_addr);
+
+        if modified_user_order_books.len() != 0 {
+            save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &modified_user_order_books.clone())?;
+        } else {
+            user_order_books.remove(&deps.api.canonical_address(&user_address)?.as_slice());
+        }
+    }
+
+    Ok(HandleResponse::default())
+}
+
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
@@ -261,6 +332,10 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         } => try_validate_key(deps, &address, viewing_key, factory_key),
         QueryMsg::SecretOrderBookContractCodeId {} => secret_order_book_contract_code_id(deps),
         QueryMsg::SecretOrderBooks {contract_address} => secret_order_books(deps,contract_address),
+        QueryMsg::UserSecretOrderBooks {
+            address,
+            viewing_key
+        } => user_secret_order_books(deps, address, viewing_key)
     }
 }
 
@@ -327,4 +402,29 @@ fn secret_order_books <S: Storage, A: Api, Q: Querier>(
     to_binary(&QueryAnswer::SecretOrderBooks {
         secret_order_book: load_secret_order_book
     })
+}
+
+fn user_secret_order_books <S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    address: HumanAddr,
+    viewing_key: String
+) -> QueryResult {
+    // Check VK
+    let read_key = ReadonlyPrefixedStorage::new(PREFIX_VIEW_KEY,  &deps.storage);
+    let load_key: Option<[u8; VIEWING_KEY_SIZE]> = may_load(&read_key, &deps.api.canonical_address(&address)?.as_slice())?;
+    let input_key = ViewingKey(viewing_key);
+    if let Some(expected_key) = load_key {
+        if input_key.check_viewing_key(&expected_key) {
+            let user_order_books = ReadonlyPrefixedStorage::new(PREFIX_USER_ORDER_BOOKS, &deps.storage);
+            let current_order_books: Option<Vec<HumanAddr>> = may_load(&user_order_books, &deps.api.canonical_address(&address)?.as_slice())?;
+
+            return to_binary(&QueryAnswer::UserSecretOrderBooks {
+                user_secret_order_book: current_order_books
+            })
+        }
+    } else {
+        input_key.check_viewing_key(&[0u8; VIEWING_KEY_SIZE]);
+    }
+
+    return to_binary(&QueryAnswer::Error {})
 }

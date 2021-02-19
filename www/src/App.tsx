@@ -3,13 +3,13 @@ import logo from './logo.svg';
 import './App.css';
 import { SigningCosmWasmClient } from 'secretjs';
 import ViewKeyButton from "./Containers/ViewKeyButton"
-import PairsAvailable from "./Containers/PairsAvailable"
+import MyLimitOrders from "./Containers/MyLimitOrders"
 import 'bootstrap/dist/css/bootstrap.min.css';
 import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret1ef56jnpnfhul6pe5esnu46ywerzmplrr968g77" 
+const ORDERS_FACTORY_ADDRESS="secret100re7stc6hzg9x3x07rccxc5ucq94cd8rkxc3u" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {
@@ -54,13 +54,25 @@ function App() {
             viewKey={viewKey}
             setViewKey={setViewKey}
           />
-          <CreateNewLimitOrder 
-            ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
-            AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
-            tokensData={tokensData}
-            client={client}
-            viewKey={viewKey.value}
-          />
+          {
+            viewKey.value &&  
+              <div>
+                  <CreateNewLimitOrder 
+                    ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+                    AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
+                    tokensData={tokensData}
+                    client={client}
+                    viewKey={viewKey.value}
+                  /> 
+                  <MyLimitOrders 
+                    ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+                    tokensData={tokensData}
+                    client={client}
+                    viewKey={viewKey.value}
+                  />
+              </div>
+          }
+          
           {
             /*
               <PairsAvailable 

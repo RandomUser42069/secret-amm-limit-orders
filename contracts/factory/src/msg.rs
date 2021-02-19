@@ -39,7 +39,15 @@ pub enum HandleMsg {
         contract_address: HumanAddr,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
-    }
+    },
+    AddOrderBookToUser {
+        amm_pair_address: HumanAddr,
+        user_address: HumanAddr
+    },
+    RemoveOrderBookFromUser {
+        amm_pair_address: HumanAddr,
+        user_address: HumanAddr
+    },
 }
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -79,6 +87,10 @@ pub enum QueryMsg {
     SecretOrderBookContractCodeId {},
     SecretOrderBooks {
         contract_address: HumanAddr,
+    },
+    UserSecretOrderBooks {
+        address: HumanAddr,
+        viewing_key: String, 
     }
 }
 
@@ -91,6 +103,8 @@ pub enum QueryAnswer {
     IsKeyValid { is_valid: bool },
     SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
     SecretOrderBooks {secret_order_book: Option<SecretOrderBookContract>},
+    UserSecretOrderBooks {user_secret_order_book: Option<Vec<HumanAddr>>},
+    Error {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

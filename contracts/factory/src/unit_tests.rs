@@ -367,4 +367,240 @@ mod tests {
             _ => {}
         }
     }
+    
+    #[test]
+    fn test_handle_add_order_book_to_user() {
+        let (init_result, mut deps) = init_helper(
+            "123124".to_string(),
+            10,
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
+        );
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+
+        //Add 2 Order books
+        let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
+            auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
+            contract_address: HumanAddr("contract1".to_string()),
+            token1_info: AssetInfo {
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                is_native_token: false,
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                native_token: None
+            },
+            token2_info: AssetInfo {
+                is_native_token: true,
+                decimal_places:6,
+                base_amount: Uint128(1000000),
+                token: None,
+                native_token: Some(NativeToken{denom:"uscrt".to_string()})
+            },
+            amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
+            auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
+            contract_address: HumanAddr("contract2".to_string()),
+            token1_info: AssetInfo {
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                is_native_token: false,
+                token: Some(Token {contract_addr:HumanAddr("token2".to_string()),token_code_hash:"".to_string()}),
+                native_token: None
+            },
+            token2_info: AssetInfo {
+                is_native_token: true,
+                decimal_places:6,
+                base_amount: Uint128(1000000),
+                token: None,
+                native_token: Some(NativeToken{denom:"uscrt".to_string()})
+            },
+            amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        );
+
+        // Create VK
+        let handle_msg = HandleMsg::CreateViewingKey {
+            entropy: "41234123".to_string()
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg);
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+        let answer: HandleAnswer = from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
+        let key = match answer {
+            HandleAnswer::ViewingKey { key } => key,
+            _ => panic!("NOPE"),
+        };
+        assert_eq!("6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(), key);
+
+        // Query User Order Books
+        let query_msg = QueryMsg::UserSecretOrderBooks {
+            address: HumanAddr("bob".to_string()),
+            viewing_key: "6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(),
+        };
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::UserSecretOrderBooks { user_secret_order_book } => {
+                assert_eq!(user_secret_order_book, None)
+            },
+            _ => {}
+        }
+
+        // Add order book to user
+        let handle_msg = HandleMsg::AddOrderBookToUser {
+            amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
+            user_address: HumanAddr("bob".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("contract1", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        // Query User Order Books
+        let query_msg = QueryMsg::UserSecretOrderBooks {
+            address: HumanAddr("bob".to_string()),
+            viewing_key: "6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(),
+        };
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::UserSecretOrderBooks { user_secret_order_book } => {
+                assert_eq!(user_secret_order_book, Some(vec![HumanAddr("contract1".to_string())]))
+            },
+            _ => {}
+        }
+
+        // Add order book to user
+        let handle_msg = HandleMsg::AddOrderBookToUser {
+            amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
+            user_address: HumanAddr("bob".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("contract2", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        // Query User Order Books
+        let query_msg = QueryMsg::UserSecretOrderBooks {
+            address: HumanAddr("bob".to_string()),
+            viewing_key: "6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(),
+        };
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::UserSecretOrderBooks { user_secret_order_book } => {
+                assert_eq!(user_secret_order_book, Some(vec![HumanAddr("contract1".to_string()),HumanAddr("contract2".to_string())]))
+            },
+            _ => {}
+        }
+
+        // Remove order book to user
+        let handle_msg = HandleMsg::RemoveOrderBookFromUser {
+            amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
+            user_address: HumanAddr("bob".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("contract1", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        // Query User Order Books
+        let query_msg = QueryMsg::UserSecretOrderBooks {
+            address: HumanAddr("bob".to_string()),
+            viewing_key: "6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(),
+        };
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::UserSecretOrderBooks { user_secret_order_book } => {
+                assert_eq!(user_secret_order_book, Some(vec![HumanAddr("contract2".to_string())]))
+            },
+            _ => {}
+        }
+
+        // Remove order book to user
+        let handle_msg = HandleMsg::RemoveOrderBookFromUser {
+            amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
+            user_address: HumanAddr("bob".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("contract2", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        // Query User Order Books
+        let query_msg = QueryMsg::UserSecretOrderBooks {
+            address: HumanAddr("bob".to_string()),
+            viewing_key: "6peL/KYDQF7jt8q5+1//aCA0/j/sVNDvzjv3jNNgrx4=".to_string(),
+        };
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::UserSecretOrderBooks { user_secret_order_book } => {
+                assert_eq!(user_secret_order_book, None)
+            },
+            _ => {}
+        }
+    }
 }
