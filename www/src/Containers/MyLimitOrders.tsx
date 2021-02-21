@@ -134,8 +134,9 @@ const MyLimitOrder = ({
     return (
         <tr key={orderBookAddress}>
             {limitOrderData && <td>{new Date(limitOrderData.timestamp*1000).toLocaleString()}</td>}
+            {limitOrderData && <td>{"Pair"}</td>}
             {limitOrderData && <td>{limitOrderData.status}</td>}
-            {limitOrderData && <td>{limitOrderData.is_bid ? "Bid" : "Ask"}</td>}
+            {limitOrderData && <td>{limitOrderData.is_bid ? "Buy" : "Sell"}</td>}
             {limitOrderData && orderBookTokensData && <td>{displayBalance(0)}</td>}
             {limitOrderData && orderBookTokensData && <td>{displayBalance(1)}</td>}
             {limitOrderData && orderBookTokensData && <td>{displayPrice("order")}</td>}
