@@ -3,10 +3,13 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Trigger function on the order contracts
-* Triggerer script
-    * Needs to have a wallet with SCRT for the gas prices on the triggers
-    * When the response is true for the check trigger, send the trigger execution
+* Ask side
+    * triggerer ask side on the order book contract
+* websockets on www
+
+** MVP ??
+
+
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * Descentralized way to check the trigger and trigger every block
 * Adapt to multiple limit orders per user on the same trading pair?

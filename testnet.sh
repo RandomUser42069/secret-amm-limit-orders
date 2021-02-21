@@ -1,6 +1,6 @@
 #!/bin/bash
 
-order_factory_contract_address="secret1legkt2lx2myet6es3vlct22w49f80ukqz88k3q"
+order_factory_contract_address="secret10m5km7axzvfrppxngrpyzchxzl5nteqj9dp8zt"
 
 my_address="secret1uwdn876f5cal4dskdzny3szml8tgdlgfedtnxy"
 amm_pair_address="secret148jpzfh6lvencwtxa6czsk8mxm7kuecncz0g0y"
@@ -15,7 +15,7 @@ token2_vk="api_key_Kp5R1zMjYEdxEgtRn/TuSsUQPuxhMdBaDVCKyeT9vDQ="
 order_vk="x5EvcmoYP/Jq1hRpysQCElToK4T7IcSNl3DCdp7xJ6o="
 
 #Check Hashes
-#secretcli query compute tx 3A9BCE55AE71A483B45C5C4D9A17641829275B99CD2C4B2535ABC442215A5686
+#secretcli query compute tx 63B96197A1FDB663574E661A095BF5ACAF756C82D2C8722F6F64BEA33DA2C520
 
 #Create VK
 #secretcli tx compute execute $order_factory_contract_address '{"create_viewing_key": { "entropy": "123"}}' --from a -y --gas 1500000 -b block 
@@ -40,7 +40,7 @@ orderbook_address=$(secretcli q compute query $order_factory_contract_address '{
 #secretcli tx compute execute $token1_address '{"send":{"recipient": "'$orderbook_address'", "amount": "1000000", "msg": "'"$msg"'"}}' --from a -y --gas 1500000 -b block
 
 #Get User OrderBooks
-secretcli q compute query $order_factory_contract_address '{"user_secret_order_books": {"address":"'$my_address'", "viewing_key":"'$order_vk'"}}'
+#secretcli q compute query $order_factory_contract_address '{"user_secret_order_books": {"address":"'$my_address'", "viewing_key":"'$order_vk'"}}'
 
 #Get Limit Order
 #secretcli q compute query $orderbook_address '{"get_limit_order": {"user_address":"'$my_address'", "user_viewkey":"'$order_vk'"}}'
@@ -49,10 +49,10 @@ secretcli q compute query $order_factory_contract_address '{"user_secret_order_b
 #secretcli tx compute execute $orderbook_address '{"withdraw_limit_order": {}}' --from a -y --gas 1500000 -b block
 
 #Check if there are limit orders to trigger
-#secretcli q compute query $orderbook_address '{"check_order_book_trigger":{}}'
+secretcli q compute query $orderbook_address '{"check_order_book_trigger":{}}'
 
 #Trigger Limit Orders
-#secretcli tx compute execute $orderbook_address '{"trigger_limit_orders": {}}' --from a -y --gas 1500000 -b block
+secretcli tx compute execute $orderbook_address '{"trigger_limit_orders": {}}' --from a -y --gas 3000000 -b block
 
 
 #secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx","token_code_hash":"CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62","viewing_key":""}},"amount":"1000000"}}}' 

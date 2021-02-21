@@ -11,6 +11,7 @@ pub const TOKEN2_DATA: &[u8] = b"token2";
 pub const LIMIT_ORDERS: &[u8] = b"limitorders";
 pub const BID_ORDER_QUEUE: &[u8] = b"bidordequeue";
 pub const ASK_ORDER_QUEUE: &[u8] = b"askorderqueue";
+pub const SWAPPED_LIMIT_ORDER: &[u8] = b"swappedlimitorder";
 pub const BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -100,29 +101,42 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
     _sender: HumanAddr,
     from: HumanAddr,
     amount: Uint128,
-    msg: Binary,
+    msg: Option<Binary>,
 ) -> StdResult<HandleResponse> {
-    let msg: HandleMsg = from_binary(&msg)?;
+    if msg != None {
+        let msg: HandleMsg = from_binary(&msg.unwrap())?;
 
-    if matches!(msg, HandleMsg::Receive { .. }) {
-        return Err(StdError::generic_err(
-            "Recursive call to receive() is not allowed",
-        ));
-    }
-
-    if let HandleMsg::CreateLimitOrder {is_bid, price} = msg.clone() {
-        let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),false,amount);
-        if order_token_index == None {
+        if matches!(msg, HandleMsg::Receive { .. }) {
+            return Err(StdError::generic_err(
+                "Recursive call to receive() is not allowed",
+            ));
+        }
+    
+        if let HandleMsg::CreateLimitOrder {is_bid, price} = msg.clone() {
+            let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),false,amount);
+            if order_token_index == None {
+                return Err(StdError::generic_err(format!(
+                    "Invalid Token or Amount Sent < Minimum Amount"
+                )));
+            }
+            return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, from, is_bid, price)
+        } else {
+                return Err(StdError::generic_err(format!(
+                    "Receive handler not found!"
+                )));
+        }
+    } else {
+        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+        if from == amm_pair_address {
+            return swap_callback(deps, env.clone(), amount);
+        } else {
             return Err(StdError::generic_err(format!(
-                "Invalid Token or Amount Sent < Minimum Amount"
+                "Receive handler not found!"
             )));
         }
-        return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, from, is_bid, price)
-    } else {
-        return Err(StdError::generic_err(format!(
-            "Receive handler not found!"
-        )));
     }
+    
 }
 
 pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
@@ -270,6 +284,41 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amount: Uint128
+) -> StdResult<HandleResponse>{
+    // Get the swapped limit order and update balance
+    let order_id: CanonicalAddr = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
+    //let order_id_can: CanonicalAddr = deps.api.canonical_address(&order_id).unwrap();
+    let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_id.as_slice()).unwrap();
+    
+    let mut modify_limit_order = limit_order_data.clone().unwrap();
+    modify_limit_order.status = "Filled".to_string();
+    modify_limit_order.balances = vec![
+        Uint128(0),
+        amount
+    ];
+    save(&mut limit_orders_data, order_id.as_slice(), &modify_limit_order)?;
+    
+    let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+    bid_order_book.remove(
+        order_id.clone()
+    );
+    save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Status {
+            status: ResponseStatus::Success,
+            message: None,
+        })?),
+    })
+}
+
 pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env
@@ -388,22 +437,28 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
         let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
         let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
     
+        // Set the swapped limit order
+        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
+
         let swap_response = snip20::send_msg(
             amm_pair_address, 
-            limit_order_state.unwrap().balances[0], 
+            limit_order_state.clone().unwrap().balances[0], 
             Some(Binary::from(r#"{ "swap": { } }"#.as_bytes())), 
             None, 
             256, 
             token1_data.clone().token.unwrap().token_code_hash, 
             token1_data.clone().token.unwrap().contract_addr
-        );
-    
-        return Err(StdError::generic_err(format!(
-            "{:?}",
-            swap_response
-        )));
-        //try_execute_swap_on_limit_order(deps, env,order_id.unwrap(), limit_order_state.unwrap());
-        //return Ok(HandleResponse::default())
+        ); 
+        return Ok(HandleResponse {
+            messages: vec![
+                swap_response.unwrap()
+            ],
+            log: vec![],
+            data: Some(to_binary(&HandleAnswer::Status {
+                status: ResponseStatus::Success,
+                message: None,
+            })?),
+        })       
     }
     let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
     if order_id != None {
@@ -411,39 +466,6 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     }
 
     return Ok(HandleResponse::default())
-}
-
-pub fn try_execute_swap_on_limit_order<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    order_id: CanonicalAddr,
-    limit_order: LimitOrderState,
-) -> bool {
-
-    // ONLY BID FOR NOW
-
-    // 1.Execute the swap
-    
-    // 1.1. Construct Message
- 
-
-    // 1.2. Send Message to the token address
-
-    // Send Order Book Fee for the triggerer address!
-
-    // Remove Order from the Queue
-    
-    // Update Limit Order
-    let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
-    let mut modify_limit_order = limit_order;
-    modify_limit_order.status = "Filled".to_string();
-    modify_limit_order.balances = vec![
-        modify_limit_order.balances[1], // swap returned amount
-        Uint128(0)
-    ];
-    save(&mut limit_orders_data, order_id.as_slice(), &modify_limit_order);
-    
-    return true
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(

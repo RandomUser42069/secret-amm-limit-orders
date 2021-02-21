@@ -86,23 +86,27 @@ const MyLimitOrder = ({
             setLimitOrderData(limitOrder)
             setOrderBookTokensData(orderBookTokenData)
 
-            setAmmPriceData(await client.execute.queryContractSmart(orderBookTokenData.amm_pair_address, { 
-                simulation: {
-                    offer_asset: {
-                        info: {
-                            token: {
-                                ...orderBookTokenData.assets_info[0].token,
-                                viewing_key: ""
-                            }
-                            
-                        },
-                        amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === orderBookTokenData.assets_info[0].token.contract_addr).decimals)
-                    }
-                }
-            }))
+            setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 0 : 1, orderBookTokenData))
           }
         init()
     }, [])
+
+
+    const getAmmPrice = async (assetIndex: number, orderBookTokenData: any) => {
+        return client.execute.queryContractSmart(orderBookTokenData.amm_pair_address, { 
+            simulation: {
+                offer_asset: {
+                    info: {
+                        token: {
+                            ...orderBookTokenData.assets_info[assetIndex].token,
+                            viewing_key: ""
+                        }
+                    },
+                    amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === orderBookTokenData.assets_info[assetIndex].token.contract_addr).decimals)
+                }
+            }
+          })
+    }
 
     const displayBalance = (index: number) => {
         const tokenData = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[index].token.contract_addr);

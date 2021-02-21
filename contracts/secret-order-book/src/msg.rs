@@ -74,7 +74,7 @@ impl HandleCallback for FactoryHandleMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Binary },
+    Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Option<Binary> },
     ReceiveNativeToken {
         is_bid: bool,
         price: Uint128

@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use std::ops::Mul;
-
-    use cosmwasm_std::{Binary, Coin, Decimal, Extern, HumanAddr, Querier, QuerierResult, QueryRequest, StdResult, Uint128, WasmQuery, from_binary, testing::*, to_vec};
-    use crate::{contract::{BID_ORDER_QUEUE, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{OrderBookPairResponse, AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, may_load}};
+    use cosmwasm_std::{CanonicalAddr, Binary, Coin, Decimal, Extern, HumanAddr, Querier, QuerierResult, QueryRequest, StdResult, Uint128, WasmQuery, from_binary, testing::*, to_vec};
+    use crate::{contract::{BID_ORDER_QUEUE, SWAPPED_LIMIT_ORDER, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{OrderBookPairResponse, AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, save, may_load}};
     use crate::contract::{init};
     use crate::order_queues::OrderQueue;
     use cosmwasm_std::{Api, InitResponse, to_binary};
@@ -14,7 +12,7 @@ mod tests {
         AmmPairSimulationResponse
     }};
 
-    use cosmwasm_storage::{ReadonlyPrefixedStorage};
+    use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 
     fn init_helper(
         factory_address: HumanAddr,
@@ -157,10 +155,10 @@ mod tests {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("bob".to_string()), 
             amount: Uint128(400000000000000),
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: true,
                 price: Uint128(40)
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -176,10 +174,10 @@ mod tests {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("alice".to_string()), 
             amount: Uint128(500000000000000),
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: true,
                 price: Uint128(50)
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -409,10 +407,10 @@ mod tests {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("bob".to_string()), 
             amount: Uint128(2000000),
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: true,
                 price: Uint128(9000000000000000000)
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -428,10 +426,10 @@ mod tests {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("alice".to_string()), 
             amount: Uint128(10000000),
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: true,
                 price: Uint128(10000000000000000000)
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -754,10 +752,10 @@ mod tests {
             sender: HumanAddr("token2address".to_string()), 
             from: HumanAddr("charlie".to_string()), 
             amount: Uint128(110000000000000000), //0.11 
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: false,
                 price: Uint128(110000) //0.11 token 1
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut mocked_deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -773,10 +771,10 @@ mod tests {
             sender: HumanAddr("token1address".to_string()), 
             from: HumanAddr("rob".to_string()), 
             amount: Uint128(20000000000000000), //0.02
-            msg: to_binary(&HandleMsg::CreateLimitOrder {
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
                 is_bid: false,
                 price: Uint128(120000) //0.12 token 1
-            }).unwrap()
+            }).unwrap())
         };
 
         let handle_result = handle(&mut mocked_deps, mock_env("token1address", &[]), handle_msg.clone());
@@ -969,6 +967,83 @@ mod tests {
         let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
 
         assert_eq!(needs_trigger, false);
+    }
+
+    #[test]
+    fn test_handle_receive_from_swap() {
+        let (init_result, mut deps) = init_helper(
+            HumanAddr("factoryaddress".to_string()),
+            "factoryhash".to_string(),
+            "factorykey".to_string(),
+            AssetInfo {
+                is_native_token: false,
+                decimal_places: 6,
+                base_amount: Uint128(1000000),
+                token: Some(
+                    Token {
+                        contract_addr: HumanAddr("token1address".to_string()),
+                        token_code_hash: "token1hash".to_string()
+                    }
+                ),
+                native_token: None
+            },
+            AssetInfo {
+                is_native_token: false,
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                token: Some(
+                    Token {
+                        contract_addr: HumanAddr("token2address".to_string()),
+                        token_code_hash: "token2hash".to_string()
+                    }
+                ),
+                native_token: None
+            },
+            HumanAddr("ammpairaddress".to_string()),
+            "ammpairhash".to_string()
+        );
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+
+        // Bob send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token1address".to_string()), 
+            from: HumanAddr("bob".to_string()), 
+            amount: Uint128(2000000),
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
+                is_bid: true,
+                price: Uint128(9000000000000000000)
+            }).unwrap())
+        };
+
+        let handle_result = handle(&mut deps, mock_env("token1address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        );
+
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token2address".to_string()), 
+            from: HumanAddr("ammpairaddress".to_string()), 
+            amount: Uint128(400000000000000),
+            msg: None
+        };
+
+        let order_id_can: CanonicalAddr = deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
+        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id_can);
+
+        let handle_result = handle(&mut deps, mock_env("token2address", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
     }
 
     #[test]
