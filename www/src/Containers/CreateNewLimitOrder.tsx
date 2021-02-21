@@ -95,7 +95,12 @@ export default ({
         const token2Address = pair.asset_infos[1].token ? pair.asset_infos[1].token.contract_addr : pair.asset_infos[1].native_token.denom;
         const token2Data = tokensData.find((data: any) => data.dst_address === token2Address);
         
-        return (token1Data ? token1Data.display_props.symbol : token1Address) + " / " + (token2Data ? token2Data.display_props.symbol : token2Address)
+        if (limitOrderIsBidInput) {
+            return (token1Data ? token1Data.display_props.symbol : token1Address) + " / " + (token2Data ? token2Data.display_props.symbol : token2Address)
+        } else {
+            return (token2Data ? token2Data.display_props.symbol : token2Address) + " / " + (token1Data ? token1Data.display_props.symbol : token1Address)
+        }
+        
     }
 
     const getCurrentPrice = () => {
@@ -137,10 +142,12 @@ export default ({
                         <div>
                             { displaySymbolPair(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex]) }
                             <br/>
-                            {<Form.Check type="checkbox" disabled={selectedAmmPriceLoading} label="Bid" checked={limitOrderIsBidInput} onChange={() => {
-                                setSelectedAmmPairPriceLoading(true)
-                                setLimitOrderIsBidInput(!limitOrderIsBidInput)
-                            }}/>}
+                            {
+                                <Button disabled={selectedAmmPriceLoading} onClick={() => {
+                                    setSelectedAmmPairPriceLoading(true)
+                                    setLimitOrderIsBidInput(!limitOrderIsBidInput)
+                                }}> Switch </Button>
+                            }
                             <br/>
                             { selectedAmmPriceLoading && <Spinner animation="border"/> }
                             { !selectedAmmPriceLoading && selectedAmmPairPrice && getCurrentPrice()}

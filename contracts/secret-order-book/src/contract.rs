@@ -291,24 +291,40 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse>{
     // Get the swapped limit order and update balance
     let order_id: CanonicalAddr = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
-    //let order_id_can: CanonicalAddr = deps.api.canonical_address(&order_id).unwrap();
     let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
     let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_id.as_slice()).unwrap();
     
     let mut modify_limit_order = limit_order_data.clone().unwrap();
     modify_limit_order.status = "Filled".to_string();
-    modify_limit_order.balances = vec![
-        Uint128(0),
-        amount
-    ];
-    save(&mut limit_orders_data, order_id.as_slice(), &modify_limit_order)?;
+    if modify_limit_order.is_bid == true {
+        modify_limit_order.balances = vec![
+            Uint128(0),
+            amount
+        ];
+    } else {
+        modify_limit_order.balances = vec![
+            amount,
+            Uint128(0)
+        ];
+    }
     
-    let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-    bid_order_book.remove(
-        order_id.clone()
-    );
-    save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+    save(&mut limit_orders_data, order_id.as_slice(), &modify_limit_order)?;
 
+    //Remove order from queue
+    if modify_limit_order.is_bid == true {
+        let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        bid_order_book.remove(
+            order_id.clone()
+        );
+        save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+    } else {
+        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
+        ask_order_book.remove(
+            order_id.clone()
+        );
+        save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
+    }
+    
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
@@ -406,11 +422,20 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
     let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
     remove(&mut limit_orders_data, user_address.as_slice());
     // remove the order on the queue
-    let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-    bid_order_book.remove(
-        user_address.clone()
-    );
-    save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+    if limit_order_data.clone().unwrap().is_bid == true {
+        let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        bid_order_book.remove(
+            user_address.clone()
+        );
+        save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+    } else {
+        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
+        ask_order_book.remove(
+            user_address.clone()
+        );
+        save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
+    }
+
     // Response
     Ok(HandleResponse {
         messages: vec![
@@ -433,7 +458,6 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, true);
     if order_id != None {
         let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
-        let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
         let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
         let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
     
@@ -462,7 +486,32 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     }
     let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
     if order_id != None {
-        return Ok(HandleResponse::default())
+        let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
+        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+    
+        // Set the swapped limit order
+        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
+
+        let swap_response = snip20::send_msg(
+            amm_pair_address, 
+            limit_order_state.clone().unwrap().balances[1], 
+            Some(Binary::from(r#"{ "swap": { } }"#.as_bytes())), 
+            None, 
+            256, 
+            token2_data.clone().token.unwrap().token_code_hash, 
+            token2_data.clone().token.unwrap().contract_addr
+        ); 
+        return Ok(HandleResponse {
+            messages: vec![
+                swap_response.unwrap()
+            ],
+            log: vec![],
+            data: Some(to_binary(&HandleAnswer::Status {
+                status: ResponseStatus::Success,
+                message: None,
+            })?),
+        })   
     }
 
     return Ok(HandleResponse::default())
@@ -590,11 +639,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         // Peek order, compare order price with base price
         if let Some(order_book_peek) = order_book.peek() {
             let would_trigger_base_price: bool;
-            if is_bid {
-                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount
-            } else {
-                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount
-            }
+            would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount;
 
             if would_trigger_base_price {
                 // Now we know that this order is a candidate to trigger but need to simulate again with his amount 
@@ -627,11 +672,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
                     amm_price_ratio = Uint128::multiply_ratio(&returned_total_amount, amount_ratio, Uint128(1));
                 };
                 
-                if is_bid {
-                    would_trigger_total_amount = order_book_peek.price >= amm_price_ratio
-                } else {
-                    would_trigger_total_amount = order_book_peek.price <= amm_price_ratio
-                }
+                would_trigger_total_amount = order_book_peek.price >= amm_price_ratio;
 
                 if would_trigger_total_amount {
                     //This order is elligible for a trigger so return it

@@ -3,18 +3,19 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Ask side
-    * triggerer ask side on the order book contract
 * websockets on www
 
 ** MVP ??
 
-
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
-* Descentralized way to check the trigger and trigger every block
-* Adapt to multiple limit orders per user on the same trading pair?
-* Clean some parts of the code that are not in use
-* Delete Native tokens?
+* Clean some parts of the code that are not in use (clear native token and block native tokens)
+* refactor everything for token0 and token1
+* security revision
+## Limitations
+* No Native token (for now)
+* Centralized way of triggering on each block
+* Only 1 limit order per account per pair
+
 ## What's done?
 ### Secret Order Book Factory Contract
 * Handles

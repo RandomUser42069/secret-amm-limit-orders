@@ -785,7 +785,7 @@ mod tests {
             handle_result.err().unwrap()
         );   
 
-        // ASK Test 1 => AMM Base Price = 0.10 && Expected False
+        // ASK Test 1 => AMM Base Price = 0.13 && Expected False
         let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
             expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
             expected_bid_base_response: AmmPairSimulationResponse {
@@ -799,7 +799,7 @@ mod tests {
             expected_bid_amount2_response: None,
             expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000000000"}}}"#.as_bytes().to_vec(),
             expected_ask_base_response: AmmPairSimulationResponse {
-                return_amount: Uint128(100000), //0.10
+                return_amount: Uint128(130000), //0.10
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             },
@@ -816,7 +816,46 @@ mod tests {
 
         assert_eq!(needs_trigger, false);
 
-        // Test 2 => AMM Base Price = 0.11 && AMM Amount = 0.10 && Expected False
+        // Test 2 => AMM Base Price = 0.12 && AMM Amount = 0.13 && Expected False
+        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
+            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
+            expected_bid_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(9999999999999999999999999),
+                spread_amount: Uint128(9999999999999999999999999),
+                commission_amount: Uint128(0)
+            },
+            expected_bid_amount_request: None,
+            expected_bid_amount_response: None,
+            expected_bid_amount2_request: None,
+            expected_bid_amount2_response: None,
+            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000000000"}}}"#.as_bytes().to_vec(),
+            expected_ask_base_response: AmmPairSimulationResponse {
+                return_amount: Uint128(120000), //0.11
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            },
+            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"110000000000000000"}}}"#.as_bytes().to_vec()),
+            expected_ask_amount_response: Some(AmmPairSimulationResponse {
+                return_amount: Uint128(13000), //0.11 * 0.10 (base price * amm price simulated)
+                spread_amount: Uint128(0),
+                commission_amount: Uint128(0)
+            }),
+            expected_ask_amount2_request: None,
+            expected_ask_amount2_response: None,
+        });
+
+        let query_msg = QueryMsg::CheckOrderBookTrigger {};
+        let query_result = query(&mocked_deps, query_msg);
+
+        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
+
+        assert_eq!(needs_trigger, false);
+ 
+        // Test 3 => AMM Base Price = 0.11 && AMM Amount = 0.12 && Expected True
+        
+        //base = 1
+        //amount = 0.11 * 0.11
+       
         let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
             expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
             expected_bid_base_response: AmmPairSimulationResponse {
@@ -836,46 +875,7 @@ mod tests {
             },
             expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"110000000000000000"}}}"#.as_bytes().to_vec()),
             expected_ask_amount_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(11000), //0.11 * 0.10 (base price * amm price simulated)
-                spread_amount: Uint128(0),
-                commission_amount: Uint128(0)
-            }),
-            expected_ask_amount2_request: None,
-            expected_ask_amount2_response: None,
-        });
-
-        let query_msg = QueryMsg::CheckOrderBookTrigger {};
-        let query_result = query(&mocked_deps, query_msg);
-
-        let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
-
-        assert_eq!(needs_trigger, false);
- 
-        // Test 3 => AMM Base Price = 0.12 && AMM Amount = 0.11 && Expected True
-        
-        //base = 1
-        //amount = 0.11 * 0.11
-       
-        let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
-            expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
-            expected_bid_base_response: AmmPairSimulationResponse {
-                return_amount: Uint128(9999999999999999999999999),
-                spread_amount: Uint128(9999999999999999999999999),
-                commission_amount: Uint128(0)
-            },
-            expected_bid_amount_request: None,
-            expected_bid_amount_response: None,
-            expected_bid_amount2_request: None,
-            expected_bid_amount2_response: None,
-            expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000000000"}}}"#.as_bytes().to_vec(),
-            expected_ask_base_response: AmmPairSimulationResponse {
-                return_amount: Uint128(120000), //0.12
-                spread_amount: Uint128(0),
-                commission_amount: Uint128(0)
-            },
-            expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"110000000000000000"}}}"#.as_bytes().to_vec()),
-            expected_ask_amount_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(13000), //0.11 * 0.118 (base price * amm price simulated)
+                return_amount: Uint128(12000), //0.11 * 0.12  (base price * amm price simulated)
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             }),
@@ -889,8 +889,8 @@ mod tests {
         let needs_trigger:bool = from_binary(&query_result.unwrap()).unwrap();
 
         assert_eq!(needs_trigger, true);
-
-        // Test 4 => AMM Base Price = 0.14 && AMM Amount = 0.10 && AMM Amount2 = 0.13 && Expected True
+ 
+        // Test 4 => AMM Base Price = 0.13 && AMM Amount = 0.11 && AMM Amount2 = 0.12 && Expected True
         let mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
             expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
             expected_bid_base_response: AmmPairSimulationResponse {
@@ -904,19 +904,19 @@ mod tests {
             expected_bid_amount2_response: None,
             expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000000000"}}}"#.as_bytes().to_vec(),
             expected_ask_base_response: AmmPairSimulationResponse {
-                return_amount: Uint128(140000), //0.14
+                return_amount: Uint128(110000), //0.11
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             },
             expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"110000000000000000"}}}"#.as_bytes().to_vec()),
             expected_ask_amount_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(11000), //0.11 * 0.10 (base price * amm price simulated)
+                return_amount: Uint128(12100), //0.11 * 0.11 (base price * amm price simulated)
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             }),
             expected_ask_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"20000000000000000"}}}"#.as_bytes().to_vec()),
             expected_ask_amount2_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(2600), //0.02 * 0.13 (base price * amm price simulated)
+                return_amount: Uint128(2400), //0.02 * 0.12 (base price * amm price simulated)
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             }),
@@ -929,7 +929,7 @@ mod tests {
 
         assert_eq!(needs_trigger, true);
 
-        // Test 5 => AMM Base Price = 0.12 && AMM Amount = 0.10 && AMM Amount2 = 0.11 && Expected False
+        // Test 5 => AMM Base Price = 0.11 && AMM Amount = 0.13 && AMM Amount2 = 0.12 && Expected False
         let mut mocked_deps = mocked_deps.change_querier(|_| MyMockQuerier {
             expected_bid_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token1address","token_code_hash":"token1hash","viewing_key":""}},"amount":"1000000"}}}"#.as_bytes().to_vec(),
             expected_bid_base_response: AmmPairSimulationResponse {
@@ -943,19 +943,19 @@ mod tests {
             expected_bid_amount2_response: None,
             expected_ask_base_request: r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"1000000000000000000"}}}"#.as_bytes().to_vec(),
             expected_ask_base_response: AmmPairSimulationResponse {
-                return_amount: Uint128(120000), //0.12
+                return_amount: Uint128(130000), //0.12
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             },
             expected_ask_amount_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"110000000000000000"}}}"#.as_bytes().to_vec()),
             expected_ask_amount_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(11000), //0.11 * 0.10 (base price * amm price simulated)
+                return_amount: Uint128(14300), //0.11 * 0.13 (base price * amm price simulated)
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             }),
             expected_ask_amount2_request: Some(r#"{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"token2address","token_code_hash":"token2hash","viewing_key":""}},"amount":"20000000000000000"}}}"#.as_bytes().to_vec()),
             expected_ask_amount2_response: Some(AmmPairSimulationResponse {
-                return_amount: Uint128(2200), //0.02 * 0.11 (base price * amm price simulated)
+                return_amount: Uint128(2400), //0.02 * 0.12 (base price * amm price simulated)
                 spread_amount: Uint128(0),
                 commission_amount: Uint128(0)
             }),
@@ -1043,7 +1043,6 @@ mod tests {
             "handle() failed: {}",
             handle_result.err().unwrap()
         ); 
-
     }
 
     #[test]
