@@ -7,12 +7,14 @@ export default ({
     ORDERS_FACTORY_ADDRESS,
     tokensData,
     client,
-    viewKey
+    viewKey,
+    remountMyLimitOrders
 }: CreateNewLimitOrderProps) => {
     const [showCreateLimitOrderModal, setShowCreateLimitOrderModal] = useState(false);
     const [ammFactoryPairs, setAmmFactoryPairs] = useState<any>(null);
     const [selectedAmmFactoryPairIndex, setSelectedAmmFactoryPairIndex] = useState<any>(null)
-    
+
+    const [createLimitOrderLoading, setCreateLimitOrderLoading] = useState<boolean>(false);
     const [selectedAmmPriceLoading, setSelectedAmmPairPriceLoading] = useState<boolean>(false);
     const [selectedAmmPairPrice, setSelectedAmmPairPrice] = useState<any>(null);
     const [orderBookPair, setOrderBookPair] = useState<any>({
@@ -35,21 +37,19 @@ export default ({
     useEffect(() => {
         async function getData() {
             if (selectedAmmFactoryPairIndex !== null) {
-                const responsePromiseAMM = getAmmPrice(0);
-                const responsePromiseOrderBook = client.execute.queryContractSmart(ORDERS_FACTORY_ADDRESS, { 
-                    secret_order_books: {
-                        contract_address: ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr
-                    }
-                  })
-
-                const [responseAMM, responseOrderBook] = await Promise.all([responsePromiseAMM,responsePromiseOrderBook]);
-
-                setSelectedAmmPairPrice(responseAMM)
-                setSelectedAmmPairPriceLoading(false)
-                setOrderBookPair({
-                    isInstanciated: responseOrderBook.secret_order_books.secret_order_book ? true : false,
-                    data: responseOrderBook.secret_order_books.secret_order_book
-                })
+                try {
+                    const responsePromiseAMM = getAmmPrice(0);
+                    const responsePromiseOrderBook = getOrderBook();
+    
+                    const [responseAMM, responseOrderBook] = await Promise.all([responsePromiseAMM,responsePromiseOrderBook]);
+    
+                    setSelectedAmmPairPrice(responseAMM)
+                    setSelectedAmmPairPriceLoading(false)
+                    setOrderBookPair({
+                        isInstanciated: responseOrderBook.secret_order_books.secret_order_book ? true : false,
+                        data: responseOrderBook.secret_order_books.secret_order_book
+                    })
+                } catch(e){alert(e)}
             }
         }
         getData()
@@ -58,14 +58,18 @@ export default ({
     useEffect(() => {
         if(selectedAmmFactoryPairIndex !== null) {
             async function getPrice() {
-                let price = null;
-                if(limitOrderIsBidInput === true) {
-                    price = await getAmmPrice(0)
-                } else {
-                    price = await getAmmPrice(1)
+                try {
+                    let price = null;
+                    if(limitOrderIsBidInput === true) {
+                        price = await getAmmPrice(0)
+                    } else {
+                        price = await getAmmPrice(1)
+                    }
+                    setSelectedAmmPairPriceLoading(false)
+                    setSelectedAmmPairPrice(price)
+                } catch(e) {
+                    alert(e)
                 }
-                setSelectedAmmPairPriceLoading(false)
-                setSelectedAmmPairPrice(price)
             }
             getPrice()
         }
@@ -80,6 +84,14 @@ export default ({
                     },
                     amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[assetIndex].token.contract_addr).decimals)
                 }
+            }
+          })
+    }
+
+    const getOrderBook = async () => {
+        return client.execute.queryContractSmart(ORDERS_FACTORY_ADDRESS, { 
+            secret_order_books: {
+                contract_address: ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr
             }
           })
     }
@@ -172,36 +184,70 @@ export default ({
                             { orderBookPair.isInstanciated === null && <Spinner animation="border"/> }
                             { orderBookPair.isInstanciated === true && 
                                 <Button onClick={async() => {
-                                        await client.execute.execute(
-                                            ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr,
-                                            { 
-                                                send: {
-                                                    recipient: orderBookPair.data.contract_addr,
-                                                    amount: "" + limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals),
-                                                    msg: btoa(JSON.stringify({
-                                                        create_limit_order: {
-                                                            is_bid: limitOrderIsBidInput,
-                                                            price: "" + limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals)
-                                                        }
-                                                    }))
-                                                } 
-                                            }
-                                        )
+                                        try {
+                                            if(
+                                                limitOrderAmountInput === null || limitOrderAmountInput === "" || limitOrderAmountInput === "0" ||
+                                                limitOrderPriceInput === null || limitOrderPriceInput === "" || limitOrderPriceInput === "0") {
+                                                throw Error("Bad Inputs");
+                                            }   
+                                            // loading
+                                            setCreateLimitOrderLoading(true)
+                                            await client.execute.execute(
+                                                ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr,
+                                                { 
+                                                    send: {
+                                                        recipient: orderBookPair.data.contract_addr,
+                                                        amount: "" + limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals),
+                                                        msg: btoa(JSON.stringify({
+                                                            create_limit_order: {
+                                                                is_bid: limitOrderIsBidInput,
+                                                                price: "" + limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals)
+                                                            }
+                                                        }))
+                                                    } 
+                                                }
+                                            )
+                                            setCreateLimitOrderLoading(false)
+                                            // sair deste terminal e fazer refresh do outro
+                                            setShowCreateLimitOrderModal(false)
+                                            remountMyLimitOrders()
+                                        } catch (e) {
+                                            alert(e)
+                                            setCreateLimitOrderLoading(false)
+                                        }
                                     }
-                                        
                                 }> 
-                                    Create Create Limit Order
+                                    {
+                                        createLimitOrderLoading ? <Spinner animation="border"/> : "Create Create Limit Order"
+                                    }
                                 </Button>
                             }
                             { orderBookPair.isInstanciated === false && 
                                 <Button onClick={async() => {
-                                    const hash = await client.execute.getCodeHashByContractAddr(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr)
-                                    await client.execute.execute(ORDERS_FACTORY_ADDRESS,  { 
-                                        new_secret_order_book_instanciate: {
-                                            amm_pair_address: ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr,
-                                            amm_pair_hash: hash
-                                        } 
-                                    })
+                                    try {
+                                        setOrderBookPair({
+                                            isInstanciated: null,
+                                            data: null
+                                        });
+                                        const hash = await client.execute.getCodeHashByContractAddr(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr)
+                                        await client.execute.execute(ORDERS_FACTORY_ADDRESS,  { 
+                                            new_secret_order_book_instanciate: {
+                                                amm_pair_address: ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr,
+                                                amm_pair_hash: hash
+                                            } 
+                                        })
+                                        const responseOrderBook = await getOrderBook();
+                                        setOrderBookPair({
+                                            isInstanciated: responseOrderBook.secret_order_books.secret_order_book ? true : false,
+                                            data: responseOrderBook.secret_order_books.secret_order_book
+                                        })
+                                    } catch (e) {
+                                        alert(e);
+                                        setOrderBookPair({
+                                            isInstanciated: false,
+                                            data: null
+                                        })
+                                    }
                                 }}> 
                                     Instanciate Order Book Pair
                                 </Button>
@@ -212,9 +258,6 @@ export default ({
                 <Modal.Footer>
                 <Button variant="secondary" onClick={() => setShowCreateLimitOrderModal(false)}>
                     Close
-                </Button>
-                <Button variant="primary" onClick={() => setShowCreateLimitOrderModal(false)}>
-                    Save Changes
                 </Button>
                 </Modal.Footer>
             </Modal>
@@ -227,6 +270,7 @@ type CreateNewLimitOrderProps = {
     ORDERS_FACTORY_ADDRESS: string,
     client: any,
     tokensData: any,
-    viewKey: string | null
+    viewKey: string | null,
+    remountMyLimitOrders: any
 }
 

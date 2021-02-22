@@ -9,7 +9,7 @@ import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret1facj2xdvggvnts8f2j4cs5pydzuknpnt5kk65q" 
+const ORDERS_FACTORY_ADDRESS="secret19fl8pwreuqt5l6rahmn0h0j00cjfsyla3n2rcv" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {
@@ -27,6 +27,7 @@ function App() {
   });
 
   const [tokensData, setTokensData] = useState<any>(null);
+  const [remountMyLimitOrdersCount, setRemountMyLimitOrdersCount] = useState<number>(0);
 
   useEffect(() => {
     async function init() {
@@ -38,10 +39,19 @@ function App() {
         display_props: {
           symbol: "sSCRT"
         }
-      }]);
+      },{
+        dst_address: "secret1ha79qdkjsq7nyy8hagsggfq6zzlwshfmgfv3k0",
+        decimals: 18,
+        display_props: {
+          symbol: "sTST"
+        }
+      },
+    ]);
     }
     init();
   }, [])
+
+  const remountMyLimitOrders = () => setRemountMyLimitOrdersCount(remountMyLimitOrdersCount+1)
 
   if(!client.ready) {
     return <div>Loading...</div>
@@ -63,8 +73,10 @@ function App() {
                     tokensData={tokensData}
                     client={client}
                     viewKey={viewKey.value}
+                    remountMyLimitOrders={remountMyLimitOrders}
                   /> 
                   <MyLimitOrders 
+                    key={remountMyLimitOrdersCount} // Used to force remount this component
                     ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
                     tokensData={tokensData}
                     client={client}

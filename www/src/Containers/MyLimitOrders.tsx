@@ -27,11 +27,9 @@ export default ({
             <thead>
                 <tr>
                     <th>Creation Date</th>
+                    <th>Pair</th>
                     <th>Status</th>
-                    <th>Type</th>
-                    <th>Token1</th>
-                    <th>Token2</th>
-                    <th>Limit Order Price</th>
+                    <th>Limit Order</th>
                     <th>Current Price</th>
                     <th>Withdraw</th>
                 </tr>
@@ -87,6 +85,16 @@ const MyLimitOrder = ({
             setOrderBookTokensData(orderBookTokenData)
 
             setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 0 : 1, orderBookTokenData))
+
+            setInterval(async () => {
+                setLimitOrderData(await client.execute.queryContractSmart(orderBookAddress, { 
+                    get_limit_order: {
+                        user_address: client.accountData.address,
+                        user_viewkey: viewKey
+                    }
+                  }));
+                setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 0 : 1, orderBookTokenData))
+            },6000)
           }
         init()
     }, [])
@@ -126,20 +134,45 @@ const MyLimitOrder = ({
             if (type === "order") {
                 return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
             } else if (type === "amm") {
-                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
+                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
             }
         }
     }
+
+    const pairDisplay = () => {
+        const token1Data = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
+        const token2Data = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
+
+        return token1Data.display_props.symbol + " / " + token2Data.display_props.symbol 
+    }
+
+    const displayDescription = () => {
+        let buying = "Buying "
+        let selling = ", selling "
+        if (limitOrderData.is_bid) {
+            const tokenDataBuy = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
+            const tokenDataSell = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
+            buying = buying + Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 * Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataBuy.display_props.symbol
+            selling= selling + Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataSell.display_props.symbol
+        }
+
+        return buying + selling
+    }
+
+    const rowStyle = limitOrderData ? {
+        backgroundColor: limitOrderData.status === "Filled" ? "#Cfffbc" : "#Fff4ad"
+    } : undefined
     
     return (
-        <tr key={orderBookAddress}>
+        <tr key={orderBookAddress} style={rowStyle}>
             {limitOrderData && <td>{new Date(limitOrderData.timestamp*1000).toLocaleString()}</td>}
-            {limitOrderData && <td>{}</td>}
+            {limitOrderData && orderBookTokensData && <td>{pairDisplay()}</td>}
             {limitOrderData && <td>{limitOrderData.status}</td>}
-            {limitOrderData && <td>{limitOrderData.is_bid ? "Buy" : "Sell"}</td>}
-            {limitOrderData && orderBookTokensData && <td>{displayBalance(0)}</td>}
-            {limitOrderData && orderBookTokensData && <td>{displayBalance(1)}</td>}
-            {limitOrderData && orderBookTokensData && <td>{displayPrice("order")}</td>}
+            {limitOrderData && orderBookTokensData && 
+                <div>
+                    {displayPrice("order")} <br/><br/>
+                    {displayDescription()}
+                </div>}
             {limitOrderData && ammPriceData && <td>{displayPrice("amm")}</td>}
             {limitOrderData && <td>{<Button onClick={ async () => {
                 try{
@@ -153,7 +186,10 @@ const MyLimitOrder = ({
                 } catch (e) {
                     alert("error on widthdraw: " + e)
                 }
-            }}>Widthdraw</Button>}</td>}
+            }}>
+                Widthdraw <br/>
+                {limitOrderData && orderBookTokensData && displayBalance(0) + "  and  " + displayBalance(1)}
+            </Button>}</td>}
         </tr>
     )
 }

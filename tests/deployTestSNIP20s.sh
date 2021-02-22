@@ -31,8 +31,11 @@ echo "Stored contract: '$token_code_id', '$token_code_hash'"
 echo "Deploying contract..."
 label=sSCRT
 
+
+secretcli tx compute instantiate 17678 '{"name": "sTest", "symbol": "STST", "decimals": 18, "initial_balances": [{"address": "secret15ppql92ld8a757hd5hg77kuxv40z4j4jh6guc5", "amount": "1000000000000000000000000000000000000"}], "prng_seed": "stuff123", "config":{"public_total_supply":true}}' --from a --gas 1500000 --label stest1 -b block -y
+
 export STORE_TX_HASH=$(
-  secretcli tx compute instantiate $token_code_id '{"name": "secretETH", "symbol": "SETH", "decimals": 6, "initial_balances": [{"address": "'$deployer_address_a'", "amount": "100000000"},{"address": "'$deployer_address_b'", "amount": "100000000"}], "prng_seed": "cenas123", "config":{"public_total_supply":true}}' --from $deployer_name_a --gas 1500000 --label $label -b block -y |
+  secretcli tx compute instantiate $token_code_id '{"name": "sTest", "symbol": "STST", "decimals": 18, "initial_balances": [{"address": "'$deployer_address_a'", "amount": "100000000"},{"address": "'$deployer_address_b'", "amount": "100000000"}], "prng_seed": "cenas123", "config":{"public_total_supply":true}}' --from $deployer_name_a --gas 1500000 --label $label -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."

@@ -226,6 +226,13 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         ))); 
     }
 
+    // check if valid price and quantity
+    if order_token_init_quant <= Uint128(0) || price <= Uint128(0) {
+        return Err(StdError::generic_err(format!(
+            "Bad Amount or Price!"
+        ))); 
+    }
+
     // Add this order book to this user on the factory
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;

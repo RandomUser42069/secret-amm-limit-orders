@@ -3,9 +3,8 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* websockets on www
-
 ** MVP ??
+* add test snip20 token to testnet!
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * Clean some parts of the code that are not in use (clear native token and block native tokens)
@@ -40,6 +39,10 @@ TODO:
     * OrderBookPairInfo => Returns info about the tokens and the associated amm pair contract address
     * GetLimitOrder => Receives a user and vk and returns the limit order info
     * CheckOrderBookTrigger => Checks if a limit order needs to be triggered
+
+## WWW Deploy
+* Go to www/build and git push
+* https://thatrand0muser.github.io/
 ## References
 * [Secret Contracts Template](https://github.com/enigmampc/secret-template)
 * [secretSCRT SNIP20 Token Contract](https://github.com/enigmampc/secretSCRT)
