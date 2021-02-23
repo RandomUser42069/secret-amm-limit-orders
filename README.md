@@ -4,7 +4,7 @@
 
 TODO:
 ** MVP ??
-* add test snip20 token to testnet!
+* how to do a TVL?
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * Clean some parts of the code that are not in use (clear native token and block native tokens)
@@ -41,7 +41,7 @@ TODO:
     * CheckOrderBookTrigger => Checks if a limit order needs to be triggered
 
 ## WWW Deploy
-* Go to www/build and git push
+* Go to www, npm run build
 * https://thatrand0muser.github.io/
 ## References
 * [Secret Contracts Template](https://github.com/enigmampc/secret-template)

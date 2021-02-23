@@ -38,7 +38,7 @@ export default ({
         async function getData() {
             if (selectedAmmFactoryPairIndex !== null) {
                 try {
-                    const responsePromiseAMM = getAmmPrice(0);
+                    const responsePromiseAMM = getAmmPrice(1);
                     const responsePromiseOrderBook = getOrderBook();
     
                     const [responseAMM, responseOrderBook] = await Promise.all([responsePromiseAMM,responsePromiseOrderBook]);
@@ -61,9 +61,9 @@ export default ({
                 try {
                     let price = null;
                     if(limitOrderIsBidInput === true) {
-                        price = await getAmmPrice(0)
-                    } else {
                         price = await getAmmPrice(1)
+                    } else {
+                        price = await getAmmPrice(0)
                     }
                     setSelectedAmmPairPriceLoading(false)
                     setSelectedAmmPairPrice(price)
@@ -117,8 +117,8 @@ export default ({
 
     const getCurrentPrice = () => {
         if(selectedAmmPairPrice) {
-            const tokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr)
-            const otherTokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr)
+            const tokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr)
+            const otherTokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr)
             return selectedAmmPairPrice.return_amount / Math.pow(10, tokenData.decimals) + " " + tokenData.display_props.symbol + " per " + otherTokenData.display_props.symbol
         }
                                     
@@ -167,16 +167,16 @@ export default ({
                             <br/>
                             <label>{
                                 limitOrderIsBidInput ?
-                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")" 
+                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")" 
                                 :
-                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")"
+                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")"
                             }</label><br/>
                             <input onChange={(e) => setLimitOrderPriceInput(e.target.value)}></input><br/>
                             <label>{
                                 limitOrderIsBidInput ?
-                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")" 
+                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")" 
                                 :
-                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")"
+                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")"
                             }
                             </label><br/>
                             <input onChange={(e) => setLimitOrderAmountInput(e.target.value)}></input><br/>
@@ -193,15 +193,15 @@ export default ({
                                             // loading
                                             setCreateLimitOrderLoading(true)
                                             await client.execute.execute(
-                                                ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr,
+                                                ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr,
                                                 { 
                                                     send: {
                                                         recipient: orderBookPair.data.contract_addr,
-                                                        amount: "" + limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals),
+                                                        amount: "" + limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals),
                                                         msg: btoa(JSON.stringify({
                                                             create_limit_order: {
                                                                 is_bid: limitOrderIsBidInput,
-                                                                price: "" + limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals)
+                                                                price: "" + limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals)
                                                             }
                                                         }))
                                                     } 

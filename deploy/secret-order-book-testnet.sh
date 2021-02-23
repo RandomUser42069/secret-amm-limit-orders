@@ -26,7 +26,7 @@ fi
 #echo factory address?
 #read factory_contract_address
 
-factory_contract_address="secret19fl8pwreuqt5l6rahmn0h0j00cjfsyla3n2rcv"
+factory_contract_address="secret1y4q9mzx6mfaq4hv4ge3dfex7h0l4ta0u67cufe"
 
 secretcli q account $(secretcli keys show -a a)
 

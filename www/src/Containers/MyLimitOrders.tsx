@@ -30,6 +30,7 @@ export default ({
                     <th>Pair</th>
                     <th>Status</th>
                     <th>Limit Order</th>
+                    <th>Triggered Price</th>
                     <th>Current Price</th>
                     <th>Withdraw</th>
                 </tr>
@@ -84,7 +85,7 @@ const MyLimitOrder = ({
             setLimitOrderData(limitOrder)
             setOrderBookTokensData(orderBookTokenData)
 
-            setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 0 : 1, orderBookTokenData))
+            setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 1 : 0, orderBookTokenData))
 
             setInterval(async () => {
                 setLimitOrderData(await client.execute.queryContractSmart(orderBookAddress, { 
@@ -93,7 +94,7 @@ const MyLimitOrder = ({
                         user_viewkey: viewKey
                     }
                   }));
-                setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 0 : 1, orderBookTokenData))
+                setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 1 : 0, orderBookTokenData))
             },6000)
           }
         init()
@@ -126,15 +127,19 @@ const MyLimitOrder = ({
         const token2Data = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
         if (limitOrderData.is_bid) {
             if (type === "order") {
-                return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
-            } else if (type === "amm") {
-                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
-            }
-        } else {
-            if (type === "order") {
                 return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
             } else if (type === "amm") {
                 return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
+            } else if (type === "triggered") {
+                return (Math.round(limitOrderData.balances[0]/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) + " " +  token1Data.display_props.symbol + " per " + token2Data.display_props.symbol
+            }
+        } else {
+            if (type === "order") {
+                return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
+            } else if (type === "amm") {
+                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
+            } else if (type === "triggered") {
+                return (Math.round(limitOrderData.balances[1]/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
             }
         }
     }
@@ -147,16 +152,21 @@ const MyLimitOrder = ({
     }
 
     const displayDescription = () => {
-        let buying = "Buying "
-        let selling = ", selling "
+        let buying = ""
+        let selling = ""
         if (limitOrderData.is_bid) {
+            const tokenDataBuy = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
+            const tokenDataSell = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
+            buying = buying + Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 * Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + tokenDataBuy.display_props.symbol
+            selling= selling + Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + tokenDataSell.display_props.symbol
+        } else {
             const tokenDataBuy = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
             const tokenDataSell = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
             buying = buying + Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 * Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataBuy.display_props.symbol
             selling= selling + Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataSell.display_props.symbol
         }
-
-        return buying + selling
+        
+        return "Selling " + selling + " for aprox. " + buying
     }
 
     const rowStyle = limitOrderData ? {
@@ -173,6 +183,14 @@ const MyLimitOrder = ({
                     {displayPrice("order")} <br/><br/>
                     {displayDescription()}
                 </div>}
+            {limitOrderData && ammPriceData && <td>{
+                <div>
+                    {
+                        limitOrderData.status === "Filled" ? 
+                        displayPrice("triggered")
+                        : " - "}
+                </div>
+            }</td>}
             {limitOrderData && ammPriceData && <td>{displayPrice("amm")}</td>}
             {limitOrderData && <td>{<Button onClick={ async () => {
                 try{

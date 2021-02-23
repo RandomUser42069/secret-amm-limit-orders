@@ -16,15 +16,17 @@ pub struct OrderIndex {
 impl Ord for OrderIndex {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.price < other.price {
-            match self.is_bid {
+            /*match self.is_bid {
                 true => Ordering::Less,
                 false => Ordering::Greater,
-            }
+            }*/
+            Ordering::Less
         } else if self.price > other.price {
-            match self.is_bid {
+            /*match self.is_bid {
                 true => Ordering::Greater,
                 false => Ordering::Less,
-            }
+            }*/
+            Ordering::Greater
         } else {
             // FIFO
             other.timestamp.cmp(&self.timestamp)

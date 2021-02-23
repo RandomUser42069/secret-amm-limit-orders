@@ -36,8 +36,8 @@ orderbook_address=$(secretcli q compute query $order_factory_contract_address '{
 #secretcli q compute query $orderbook_address '{"order_book_pair_info":{}}'
 
 #Create Limit Order
-#msg=$(base64 -w 0 <<<'{"create_limit_order": {"is_bid": true, "price": "4041160934948558462"}}')
-#secretcli tx compute execute $token1_address '{"send":{"recipient": "'$orderbook_address'", "amount": "1000000", "msg": "'"$msg"'"}}' --from a -y --gas 1500000 -b block
+#msg=$(base64 -w 0 <<<'{"create_limit_order": {"is_bid": true, "price": "4000000"}}')
+#secretcli tx compute execute $token2_address '{"send":{"recipient": "'$orderbook_address'", "amount": "1000000000000000000", "msg": "'"$msg"'"}}' --from a -y --gas 1500000 -b block
 
 #Get User OrderBooks
 #secretcli q compute query $order_factory_contract_address '{"user_secret_order_books": {"address":"'$my_address'", "viewing_key":"'$order_vk'"}}'

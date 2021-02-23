@@ -233,6 +233,15 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         ))); 
     }
 
+    // check if correct flag on is_bid!
+    // is_bid = true => sell token 2 for token 1
+    // is_bid = false =>  sell token 1 for token 2
+    if (is_bid == true && balances[0] > Uint128(0)) || (is_bid == false && balances[1] > Uint128(0)) {
+        return Err(StdError::generic_err(format!(
+            "Incorrect is_bid flag! is_bid = true => sell token 2 for token 1 || is_bid = false =>  sell token 1 for token 2"
+        ))); 
+    }
+
     // Add this order book to this user on the factory
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
@@ -305,13 +314,13 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     modify_limit_order.status = "Filled".to_string();
     if modify_limit_order.is_bid == true {
         modify_limit_order.balances = vec![
-            Uint128(0),
-            amount
+            amount,
+            Uint128(0)
         ];
     } else {
         modify_limit_order.balances = vec![
-            amount,
-            Uint128(0)
+            Uint128(0),
+            amount
         ];
     }
     
@@ -464,35 +473,6 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     // 1. Check Swappable Limit Orders Order Books
     let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, true);
     if order_id != None {
-        let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
-        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
-        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
-    
-        // Set the swapped limit order
-        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
-
-        let swap_response = snip20::send_msg(
-            amm_pair_address, 
-            limit_order_state.clone().unwrap().balances[0], 
-            Some(Binary::from(r#"{ "swap": { } }"#.as_bytes())), 
-            None, 
-            256, 
-            token1_data.clone().token.unwrap().token_code_hash, 
-            token1_data.clone().token.unwrap().contract_addr
-        ); 
-        return Ok(HandleResponse {
-            messages: vec![
-                swap_response.unwrap()
-            ],
-            log: vec![],
-            data: Some(to_binary(&HandleAnswer::Status {
-                status: ResponseStatus::Success,
-                message: None,
-            })?),
-        })       
-    }
-    let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
-    if order_id != None {
         let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
         let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
         let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
@@ -508,6 +488,35 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
             256, 
             token2_data.clone().token.unwrap().token_code_hash, 
             token2_data.clone().token.unwrap().contract_addr
+        ); 
+        return Ok(HandleResponse {
+            messages: vec![
+                swap_response.unwrap()
+            ],
+            log: vec![],
+            data: Some(to_binary(&HandleAnswer::Status {
+                status: ResponseStatus::Success,
+                message: None,
+            })?),
+        })       
+    }
+    let (order_id, limit_order_state) = get_limit_order_to_trigger(deps, false);
+    if order_id != None {
+        let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+        let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
+        let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
+    
+        // Set the swapped limit order
+        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
+
+        let swap_response = snip20::send_msg(
+            amm_pair_address, 
+            limit_order_state.clone().unwrap().balances[0], 
+            Some(Binary::from(r#"{ "swap": { } }"#.as_bytes())), 
+            None, 
+            256, 
+            token1_data.clone().token.unwrap().token_code_hash, 
+            token1_data.clone().token.unwrap().contract_addr
         ); 
         return Ok(HandleResponse {
             messages: vec![
@@ -614,10 +623,10 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
 
     if is_bid {
         order_book = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        token_data = load(&deps.storage, TOKEN1_DATA).unwrap();
+        token_data = load(&deps.storage, TOKEN2_DATA).unwrap();
     } else {
         order_book = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
-        token_data = load(&deps.storage, TOKEN2_DATA).unwrap();
+        token_data = load(&deps.storage, TOKEN1_DATA).unwrap();
     }
     
     let asset:AmmAssetInfo = 
