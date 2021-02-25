@@ -3,8 +3,10 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-** MVP ??
+* Balances on create limit order modal www
 * how to do a TVL?
+* Admin commands for updating?
+
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * Clean some parts of the code that are not in use (clear native token and block native tokens)
@@ -34,7 +36,7 @@ TODO:
     * Receive => Create Limit Order from SNIP20 Tokens
     * ReceiveNativeToken => Create Limit Order from the native token
     * WithdrawLimitOrder => Widthdraw assets locked on a limit order
-    * ***TODO: TriggerLimitOrders***
+    * TriggerLimitOrders
 * Queries
     * OrderBookPairInfo => Returns info about the tokens and the associated amm pair contract address
     * GetLimitOrder => Receives a user and vk and returns the limit order info
@@ -49,3 +51,101 @@ TODO:
 * [Secret Swap](https://github.com/enigmampc/SecretSwap)
 * [Sealed Bid Auction Factory](https://github.com/baedrik/secret-auction-factory)
 * [Rust Order Book Example repo](https://github.com/dgtony/orderbook-rs/blob/master/src)
+
+## Check Triggers Algo example
+
+### Pair: BTC/USDT
+
+#### Buy
+
+Limit order price => 47000 usdt per 1 btc
+Amount USDT => 1000 usdt
+Amount BTC => 0.021 btc (Calculated 1000/47000)
+
+Buy Algo:
+	Simulate => Offer 1 BTC => 48000 per 1 btc
+	Check: Limit Order Price (47000) >= Simulated (48000) 
+	- false
+
+	Simulate => Offer 1 BTC => 47000 USDT
+	Check: Limit Order Price (47000) >= Simulated (47000) 
+	Simulate => Offer 0.021 BTC => 1010 usdt  (wSlippage)
+	Check: Amount USDT (1000) >= Simulated (1010)
+	- false
+
+	Simulate => Offer 1 BTC => 46000 USDT
+	Check: Limit Order Price (47000) >= Simulated (46000) 
+	Simulate => Offer 0.021 BTC => 950 usdt  (wSlippage)
+	Check: Amount USDT (1000) >= Simulated (950)
+	- true
+
+#### Sell
+
+Limit order price => 50000 usdt per 1 btc
+Amount BTC => 0.02 btc
+Amount USDT => 1000 usdt (Calculated 0.02 * 50000)
+
+Sell Algo:
+	Simulate => Offer 1 BTC => 48000 per 1 btc
+	Check: Limit Order Price (50000) <= Simulated (48000)
+	- false
+
+	Simulate => Offer 1 BTC => 50000 USDT
+	Check: Limit Order Price (50000) <= Simulated (50000) 
+	Simulate => Offer 0.02 BTC => 990 usdt  (wSlippage)
+	Check: Amount USDT (1000) <= Simulated (990)
+	- false
+
+	Simulate => Offer 1 BTC => 51000 USDT
+	Check: Limit Order Price (50000) <= Simulated (51000) 
+	Simulate => Offer 0.02 BTC => 1020 usdt  (wSlippage)
+	Check: Amount USDT (1000) <= Simulated (1020)
+	- true
+
+### Pair: SCRT/ETH
+
+#### Buy
+
+Limit order price => 0.0023e18 ETH per 1 SCRT
+Amount ETH => 10e18 ETH
+Amount SCRT => 4347.826086e6 SCRT (Calculated 10e18/0.0023e18)
+
+Buy Algo:
+	Simulate => Offer 1e6 SCRT => 0.002410e18 per 1 SCRT
+	Check: Limit Order Price (0.0023e18) >= Simulated (0.002410e18) 
+	- false
+
+	Simulate => Offer 1e6 SCRT => 0.0023e18 ETH
+	Check: Limit Order Price (0.0023e18) >= Simulated (0.0023e18) 
+	Simulate => Offer 4347.826086e6 SCRT => 11e18 ETH  (wSlippage)
+	Check: Amount ETH (10e18) >= Simulated (11e18)
+	- false
+
+	Simulate => Offer 1e6 SCRT => 0.0022e18 ETH
+	Check: Limit Order Price (0.0023e18) >= Simulated (0.0022e18) 
+	Simulate => Offer 4347.826086e6 SCRT => 9.5e18 ETH  (wSlippage)
+	Check: Amount USDT (10e18) >= Simulated (9.5e18)
+	- true
+
+#### Sell
+
+Limit order price => 0.0025e18 ETH per 1 SCRT
+Amount ETH => 10e18 ETH
+Amount SCRT => 4000e6 SCRT (Calculated 10e18/0.0025e18)
+
+Sell Algo:
+    Simulate => Offer 1e6 SCRT => 0.0024e18 per 1 SCRT
+	Check: Limit Order Price (0.0025e18) <= Simulated (0.0024e18) 
+	- false
+
+    Simulate => Offer 1e6 SCRT => 0.0025e18 ETH
+	Check: Limit Order Price (0.0025e18) >= Simulated (0.0025e18) 
+	Simulate => Offer 4000e6 SCRT => 9.5e18 ETH  (wSlippage)
+	Check: Amount ETH (10e18) <= Simulated (9.5e18)
+	- false
+
+	Simulate => Offer 1e6 SCRT => 0.0026e18 ETH
+	Check: Limit Order Price (0.0025e18) <= Simulated (0.0026e18) 
+	Simulate => Offer 4000e6 SCRT => 11e18 ETH  (wSlippage)
+	Check: Amount ETH (10e18) <= Simulated (11e18)
+	- true

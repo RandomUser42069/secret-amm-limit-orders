@@ -1,5 +1,5 @@
 import React, {useState,useEffect} from 'react';
-import {Card, Button, Spinner, Modal, DropdownButton, Dropdown, Form} from 'react-bootstrap'
+import {Card, Button, Spinner, Modal, DropdownButton, Dropdown, Form, Nav} from 'react-bootstrap'
 
 // eslint-disable-next-line import/no-anonymous-default-export
 export default ({
@@ -38,7 +38,7 @@ export default ({
         async function getData() {
             if (selectedAmmFactoryPairIndex !== null) {
                 try {
-                    const responsePromiseAMM = getAmmPrice(1);
+                    const responsePromiseAMM = getAmmPrice();
                     const responsePromiseOrderBook = getOrderBook();
     
                     const [responseAMM, responseOrderBook] = await Promise.all([responsePromiseAMM,responsePromiseOrderBook]);
@@ -55,34 +55,14 @@ export default ({
         getData()
     }, [selectedAmmFactoryPairIndex])
 
-    useEffect(() => {
-        if(selectedAmmFactoryPairIndex !== null) {
-            async function getPrice() {
-                try {
-                    let price = null;
-                    if(limitOrderIsBidInput === true) {
-                        price = await getAmmPrice(1)
-                    } else {
-                        price = await getAmmPrice(0)
-                    }
-                    setSelectedAmmPairPriceLoading(false)
-                    setSelectedAmmPairPrice(price)
-                } catch(e) {
-                    alert(e)
-                }
-            }
-            getPrice()
-        }
-    },[selectedAmmFactoryPairIndex, limitOrderIsBidInput])
-
-    const getAmmPrice = async (assetIndex: number) => {
+    const getAmmPrice = async () => {
         return client.execute.queryContractSmart(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].contract_addr, { 
             simulation: {
                 offer_asset: {
                     info: {
-                        ...ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[assetIndex]
+                        ...ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0]
                     },
-                    amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[assetIndex].token.contract_addr).decimals)
+                    amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr).decimals)
                 }
             }
           })
@@ -106,19 +86,13 @@ export default ({
         const token1Data = tokensData.find((data: any) => data.dst_address === token1Address);
         const token2Address = pair.asset_infos[1].token ? pair.asset_infos[1].token.contract_addr : pair.asset_infos[1].native_token.denom;
         const token2Data = tokensData.find((data: any) => data.dst_address === token2Address);
-        
-        if (limitOrderIsBidInput) {
-            return (token1Data ? token1Data.display_props.symbol : token1Address) + " / " + (token2Data ? token2Data.display_props.symbol : token2Address)
-        } else {
-            return (token2Data ? token2Data.display_props.symbol : token2Address) + " / " + (token1Data ? token1Data.display_props.symbol : token1Address)
-        }
-        
+        return (token1Data ? token1Data.display_props.symbol : token1Address) + " / " + (token2Data ? token2Data.display_props.symbol : token2Address) 
     }
 
     const getCurrentPrice = () => {
         if(selectedAmmPairPrice) {
-            const tokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr)
-            const otherTokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr)
+            const tokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr)
+            const otherTokenData = tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr)
             return selectedAmmPairPrice.return_amount / Math.pow(10, tokenData.decimals) + " " + tokenData.display_props.symbol + " per " + otherTokenData.display_props.symbol
         }
                                     
@@ -127,14 +101,21 @@ export default ({
     return (
         <div>
             <Button onClick={() => setShowCreateLimitOrderModal(true)}>Create New Limit Order</Button>
-            <Modal show={showCreateLimitOrderModal} onHide={() => setShowCreateLimitOrderModal(false)}>
+            <Modal show={showCreateLimitOrderModal} onHide={() => {
+                setShowCreateLimitOrderModal(false)
+                setSelectedAmmFactoryPairIndex(null)
+            }}>
                 <Modal.Header closeButton>
                 <Modal.Title>Create Limit Order</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
                     {
                         ammFactoryPairs && 
-                            <DropdownButton id="dropdown-basic-button" title="Dropdown button">
+                            <DropdownButton id="dropdown-basic-button" title={
+                                selectedAmmFactoryPairIndex !== null ? 
+                                    displaySymbolPair(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex])
+                                : "Select Pair..."
+                            }>
                                 {
                                     ammFactoryPairs!.pairs.map((pair: any, index: number) =>
                                         <Dropdown.Item key={pair.contract_addr} onClick={() => {
@@ -152,44 +133,61 @@ export default ({
                     {
                         selectedAmmFactoryPairIndex !== null &&
                         <div>
-                            { displaySymbolPair(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex]) }
-                            <br/>
-                            {
-                                <Button disabled={selectedAmmPriceLoading} onClick={() => {
-                                    setSelectedAmmPairPriceLoading(true)
-                                    setLimitOrderIsBidInput(!limitOrderIsBidInput)
-                                }}> Switch </Button>
-                            }
                             <br/>
                             { selectedAmmPriceLoading && <Spinner animation="border"/> }
                             { !selectedAmmPriceLoading && selectedAmmPairPrice && getCurrentPrice()}
                             <br/>
                             <br/>
-                            <label>{
-                                limitOrderIsBidInput ?
-                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")" 
-                                :
-                                `Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")"
-                            }</label><br/>
+                            <Button style={{marginRight: "20px"}} variant={limitOrderIsBidInput ? "success" : "light"} onClick={() => { setLimitOrderIsBidInput(true)}}> 
+                                    Buy 
+                            </Button>
+                            <Button variant={!limitOrderIsBidInput ? "danger" : "light"} onClick={() => { setLimitOrderIsBidInput(false)}}> 
+                                    Sell 
+                            </Button>
+                            <br/>
+                            <br/>
+                            <label>{`Price of Limit Order (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")"}</label><br/>
                             <input onChange={(e) => setLimitOrderPriceInput(e.target.value)}></input><br/>
                             <label>{
                                 limitOrderIsBidInput ?
-                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")" 
+                                `Deposit Amount (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")" 
                                 :
-                                `Amount to swap (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")"
+                                `Deposit Amount (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")"
                             }
                             </label><br/>
                             <input onChange={(e) => setLimitOrderAmountInput(e.target.value)}></input><br/>
+                            <label>{
+                                limitOrderIsBidInput ?
+                                `Expected Amount (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[0].token.contract_addr) + ")" 
+                                :
+                                `Expected Amount (` + getTokenSymbol(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr) + ")"
+                            }
+                            </label><br/>
+                            <input disabled value={
+                                limitOrderAmountInput && limitOrderPriceInput ? 
+                                    (
+                                        limitOrderIsBidInput ? ("" + limitOrderAmountInput/limitOrderPriceInput)
+                                        : ("" + limitOrderAmountInput*limitOrderPriceInput)
+                                    )
+                                : ""
+                            }></input><br/>
                             <br/>
                             { orderBookPair.isInstanciated === null && <Spinner animation="border"/> }
                             { orderBookPair.isInstanciated === true && 
-                                <Button onClick={async() => {
+                                <Button 
+                                    style={{width: "100%"}}
+                                    variant={limitOrderIsBidInput ? "success" : "danger"}
+                                    onClick={async() => {
                                         try {
                                             if(
                                                 limitOrderAmountInput === null || limitOrderAmountInput === "" || limitOrderAmountInput === "0" ||
                                                 limitOrderPriceInput === null || limitOrderPriceInput === "" || limitOrderPriceInput === "0") {
                                                 throw Error("Bad Inputs");
                                             }   
+
+                                            const limitOrderExpectedAmount: any = 
+                                                limitOrderIsBidInput ? ("" + limitOrderAmountInput/limitOrderPriceInput)
+                                                    : ("" + limitOrderAmountInput*limitOrderPriceInput)
                                             // loading
                                             setCreateLimitOrderLoading(true)
                                             await client.execute.execute(
@@ -197,19 +195,21 @@ export default ({
                                                 { 
                                                     send: {
                                                         recipient: orderBookPair.data.contract_addr,
-                                                        amount: "" + limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals),
+                                                        amount: "" + Math.floor(limitOrderAmountInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 1 : 0].token.contract_addr).decimals)),
                                                         msg: btoa(JSON.stringify({
                                                             create_limit_order: {
                                                                 is_bid: limitOrderIsBidInput,
-                                                                price: "" + limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals)
+                                                                price: "" + Math.floor(limitOrderPriceInput*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[1].token.contract_addr).decimals)),
+                                                                expected_amount: "" + Math.floor(limitOrderExpectedAmount*Math.pow(10, tokensData.find((data: any) => data.dst_address === ammFactoryPairs.pairs[selectedAmmFactoryPairIndex].asset_infos[limitOrderIsBidInput ? 0 : 1].token.contract_addr).decimals)),
                                                             }
                                                         }))
                                                     } 
                                                 }
                                             )
                                             setCreateLimitOrderLoading(false)
-                                            // sair deste terminal e fazer refresh do outro
+                                            // sair deste e fazer refresh do outro
                                             setShowCreateLimitOrderModal(false)
+                                            setSelectedAmmFactoryPairIndex(null)
                                             remountMyLimitOrders()
                                         } catch (e) {
                                             alert(e)
@@ -218,7 +218,7 @@ export default ({
                                     }
                                 }> 
                                     {
-                                        createLimitOrderLoading ? <Spinner animation="border"/> : "Create Create Limit Order"
+                                        createLimitOrderLoading ? <Spinner animation="border"/> : limitOrderIsBidInput ? "Buy" : "Sell"
                                     }
                                 </Button>
                             }
@@ -256,7 +256,10 @@ export default ({
                     }
                 </Modal.Body>
                 <Modal.Footer>
-                <Button variant="secondary" onClick={() => setShowCreateLimitOrderModal(false)}>
+                <Button variant="secondary" onClick={() => {
+                    setSelectedAmmFactoryPairIndex(null)
+                    setShowCreateLimitOrderModal(false)
+                }}>
                     Close
                 </Button>
                 </Modal.Footer>

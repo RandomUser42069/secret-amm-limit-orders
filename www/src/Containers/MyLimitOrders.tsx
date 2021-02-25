@@ -28,6 +28,7 @@ export default ({
                 <tr>
                     <th>Creation Date</th>
                     <th>Pair</th>
+                    <th>Type</th>
                     <th>Status</th>
                     <th>Limit Order</th>
                     <th>Triggered Price</th>
@@ -85,7 +86,7 @@ const MyLimitOrder = ({
             setLimitOrderData(limitOrder)
             setOrderBookTokensData(orderBookTokenData)
 
-            setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 1 : 0, orderBookTokenData))
+            setAmmPriceData(await getAmmPrice(orderBookTokenData))
 
             setInterval(async () => {
                 setLimitOrderData(await client.execute.queryContractSmart(orderBookAddress, { 
@@ -94,24 +95,24 @@ const MyLimitOrder = ({
                         user_viewkey: viewKey
                     }
                   }));
-                setAmmPriceData(await getAmmPrice(limitOrder.is_bid ? 1 : 0, orderBookTokenData))
-            },6000)
+                setAmmPriceData(await getAmmPrice(orderBookTokenData))
+            },12000)
           }
         init()
     }, [])
 
 
-    const getAmmPrice = async (assetIndex: number, orderBookTokenData: any) => {
+    const getAmmPrice = async (orderBookTokenData: any) => {
         return client.execute.queryContractSmart(orderBookTokenData.amm_pair_address, { 
             simulation: {
                 offer_asset: {
                     info: {
                         token: {
-                            ...orderBookTokenData.assets_info[assetIndex].token,
+                            ...orderBookTokenData.assets_info[0].token,
                             viewing_key: ""
                         }
                     },
-                    amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === orderBookTokenData.assets_info[assetIndex].token.contract_addr).decimals)
+                    amount: "" + Math.pow(10, tokensData.find((data: any) => data.dst_address === orderBookTokenData.assets_info[0].token.contract_addr).decimals)
                 }
             }
           })
@@ -125,22 +126,17 @@ const MyLimitOrder = ({
     const displayPrice = (type: string) => {
         const token1Data = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
         const token2Data = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
-        if (limitOrderData.is_bid) {
-            if (type === "order") {
-                return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
-            } else if (type === "amm") {
-                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + token1Data.display_props.symbol + " per " + token2Data.display_props.symbol 
-            } else if (type === "triggered") {
-                return (Math.round(limitOrderData.balances[0]/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) + " " +  token1Data.display_props.symbol + " per " + token2Data.display_props.symbol
+        if (type === "order") {
+            return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
+        } else if (type === "amm") {
+            return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
+        } else if (type === "triggered") {
+            if (limitOrderData.is_bid) {
+                return (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.balances[0]/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
+            } else {
+                return (Math.round(limitOrderData.balances[1]/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
             }
-        } else {
-            if (type === "order") {
-                return Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
-            } else if (type === "amm") {
-                return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
-            } else if (type === "triggered") {
-                return (Math.round(limitOrderData.balances[1]/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
-            }
+            
         }
     }
 
@@ -151,22 +147,21 @@ const MyLimitOrder = ({
         return token1Data.display_props.symbol + " / " + token2Data.display_props.symbol 
     }
 
-    const displayDescription = () => {
-        let buying = ""
-        let selling = ""
-        if (limitOrderData.is_bid) {
-            const tokenDataBuy = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
-            const tokenDataSell = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
-            buying = buying + Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 * Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + tokenDataBuy.display_props.symbol
-            selling= selling + Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + tokenDataSell.display_props.symbol
-        } else {
-            const tokenDataBuy = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[1].token.contract_addr);
-            const tokenDataSell = tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[0].token.contract_addr);
-            buying = buying + Math.round(limitOrderData.price/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 * Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataBuy.display_props.symbol
-            selling= selling + Math.round(limitOrderData.order_token_init_quant/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000 + " " + tokenDataSell.display_props.symbol
-        }
-        
-        return "Selling " + selling + " for aprox. " + buying
+    const findTokenData = (index: number) => 
+        tokensData.find((data: any) => data.dst_address === orderBookTokensData.assets_info[index].token.contract_addr);
+
+    const getDepositedAmount = () => {
+        const index = limitOrderData.is_bid ? 1 : 0;
+        const amount = Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[index].decimal_places) * 100000) / 100000;
+
+        return "Deposited: " + amount + " " + findTokenData(index).display_props.symbol
+    }
+
+    const getExpectedAmount = () => {
+        const index = limitOrderData.is_bid ? 0 : 1;
+        const amount = Math.round(limitOrderData.expected_amount/Math.pow(10,orderBookTokensData.assets_info[index].decimal_places) * 100000) / 100000;
+
+        return "Expected (>=): " + amount + " " + findTokenData(index).display_props.symbol
     }
 
     const rowStyle = limitOrderData ? {
@@ -177,11 +172,13 @@ const MyLimitOrder = ({
         <tr key={orderBookAddress} style={rowStyle}>
             {limitOrderData && <td>{new Date(limitOrderData.timestamp*1000).toLocaleString()}</td>}
             {limitOrderData && orderBookTokensData && <td>{pairDisplay()}</td>}
+            {limitOrderData && <td>{limitOrderData.is_bid ? "Buy" : "Sell"}</td>}
             {limitOrderData && <td>{limitOrderData.status}</td>}
             {limitOrderData && orderBookTokensData && 
                 <div>
                     {displayPrice("order")} <br/><br/>
-                    {displayDescription()}
+                    {getDepositedAmount()}<br/>
+                    {getExpectedAmount()}
                 </div>}
             {limitOrderData && ammPriceData && <td>{
                 <div>

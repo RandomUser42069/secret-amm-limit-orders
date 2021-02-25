@@ -40,6 +40,13 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut token1_response: Option<CosmosMsg> = None;
     let mut token2_response: Option<CosmosMsg> = None;
 
+    // NO NATIVE TOKENS FOR NOW
+    if msg.token1_info.clone().is_native_token || msg.token2_info.clone().is_native_token {
+        return Err(StdError::generic_err(
+            "Native token not supported for now...",
+        ));
+    }
+
     if !msg.token1_info.clone().is_native_token {
         token1_response = Some(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: msg.token1_info.token.clone().unwrap().contract_addr,
@@ -88,7 +95,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         // Receiver to CreateLimitOrder from SNIP20
         HandleMsg::Receive { sender, from, amount, msg } => try_receive(deps, env, sender, from, amount, msg),
         // Receiver to CreateLimitOrder from SCRT
-        HandleMsg::ReceiveNativeToken {is_bid, price} => try_receive_native_token(deps, env, is_bid, price),
+        //HandleMsg::ReceiveNativeToken {is_bid, price} => try_receive_native_token(deps, env, is_bid, price),
         HandleMsg::WithdrawLimitOrder {} => try_withdraw_limit_order(deps, env), 
         HandleMsg::TriggerLimitOrders {} => try_trigger_limit_orders(deps, env), 
         _ => Err(StdError::generic_err("Handler not found!"))
@@ -112,14 +119,14 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
             ));
         }
     
-        if let HandleMsg::CreateLimitOrder {is_bid, price} = msg.clone() {
-            let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),false,amount);
-            if order_token_index == None {
+        if let HandleMsg::CreateLimitOrder {is_bid, price, expected_amount} = msg.clone() {
+            let (deposit_token_index,balances,deposit_amount) = prepare_create_limit_order(deps,env.clone(),false,amount);
+            if deposit_token_index == None {
                 return Err(StdError::generic_err(format!(
                     "Invalid Token or Amount Sent < Minimum Amount"
                 )));
             }
-            return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, from, is_bid, price)
+            return create_limit_order(deps, env.clone(), balances, deposit_token_index.unwrap(), deposit_amount, expected_amount, from, is_bid, price)
         } else {
                 return Err(StdError::generic_err(format!(
                     "Receive handler not found!"
@@ -139,7 +146,7 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
     
 }
 
-pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
+/*pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     is_bid:bool,
@@ -152,13 +159,13 @@ pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
         )));
     }
     return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, env.clone().message.sender, is_bid, price)
-}
+}*/
 
 fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     is_native_token: bool,
-    amount:Uint128,
+    amount:Uint128
 ) -> (
     Option<i8>,
     Vec<Uint128>,
@@ -167,21 +174,21 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
     let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
     let token2_info: AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
 
-    let mut order_token_index:Option<i8> = None;
+    let mut deposit_token_index:Option<i8> = None;
     let mut balances = vec![Uint128(0), Uint128(0)];
-    let order_token_init_quant: Uint128 = amount;
+    let deposit_amount: Uint128 = amount;
 
     match token1_info.is_native_token {
         true => {
             if is_native_token{
                 balances[0] = amount;
-                order_token_index = Some(0);
+                deposit_token_index = Some(0);
             }
         },
         false => {
             if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender{
                 balances[0] = amount;
-                order_token_index = Some(0);
+                deposit_token_index = Some(0);
             }
         }
     }
@@ -190,26 +197,27 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
         true => {
             if is_native_token {
                 balances[1] = amount;
-                order_token_index = Some(1);
+                deposit_token_index = Some(1);
             }
         },
         false => {
             if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender {
                 balances[1] = amount;
-                order_token_index = Some(1);
+                deposit_token_index = Some(1);
             }
         }
     }
 
-    return (order_token_index,balances,order_token_init_quant);
+    return (deposit_token_index,balances,deposit_amount);
 }
 
 pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     balances: Vec<Uint128>,
-    order_token_index: i8,
-    order_token_init_quant: Uint128,
+    deposit_token_index: i8,
+    deposit_amount: Uint128,
+    expected_amount: Uint128,
     from: HumanAddr,
     is_bid: bool,
     price: Uint128
@@ -227,7 +235,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     }
 
     // check if valid price and quantity
-    if order_token_init_quant <= Uint128(0) || price <= Uint128(0) {
+    if deposit_amount <= Uint128(0) || expected_amount <= Uint128(0) || price <= Uint128(0) {
         return Err(StdError::generic_err(format!(
             "Bad Amount or Price!"
         ))); 
@@ -261,8 +269,9 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         is_bid,
         status: "Active".to_string(),
         price,
-        order_token_index,
-        order_token_init_quant,
+        deposit_token_index,
+        deposit_amount,
+        expected_amount,
         timestamp: env.block.time,
         balances
     };
@@ -615,81 +624,81 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     is_bid: bool
 ) -> (Option<CanonicalAddr>, Option<LimitOrderState>) {
     let mut order_book: OrderQueue;
-    let token_data: AssetInfo;
     let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
     let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
     let amm_pair_hash: String = load(&amm_pair_data, b"hash").unwrap();
     let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+    let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+    let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
 
     if is_bid {
         order_book = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        token_data = load(&deps.storage, TOKEN2_DATA).unwrap();
     } else {
         order_book = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
-        token_data = load(&deps.storage, TOKEN1_DATA).unwrap();
     }
     
-    let asset:AmmAssetInfo = 
-    match token_data.is_native_token {
+    let asset1:AmmAssetInfo = 
+    match token1_data.is_native_token {
         true => AmmAssetInfo::NativeToken {
-            denom: token_data.native_token.unwrap().denom
+            denom: token1_data.native_token.unwrap().denom
         },
         false => AmmAssetInfo::Token {
-            contract_addr: token_data.clone().token.unwrap().contract_addr,
-            token_code_hash: token_data.clone().token.unwrap().token_code_hash,
+            contract_addr: token1_data.clone().token.unwrap().contract_addr,
+            token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
             viewing_key: "".to_string()
         }
     };
 
-    // Get Base Price => Simulate 1 lowest unit of the token
-    // This is the the base price of the swap without the amount counted
+    // Simulate offering Token 1 with base unit of 1
+    // Getting => X Token 2 per Token1 Price
     let response_amm_base_simulation: AmmPairSimulationResponse =
     AmmSimulationQuery::simulation {
         offer_asset: AmmSimulationOfferAsset{
-            info: asset.clone(),
-            amount: token_data.base_amount,
+            info: asset1.clone(),
+            amount: token1_data.base_amount,
         }
     }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
 
     for _ in 1..10 { // Max limit of 10 limit orders to check
-        // Peek order, compare order price with base price
+        // Peek order, compare price of the limit order with the simulated one
         if let Some(order_book_peek) = order_book.peek() {
             let would_trigger_base_price: bool;
-            would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount;
-
+            if is_bid {
+                would_trigger_base_price = order_book_peek.price >= response_amm_base_simulation.return_amount;
+            } else {
+                would_trigger_base_price = order_book_peek.price <= response_amm_base_simulation.return_amount;
+            }
+            
             if would_trigger_base_price {
                 // Now we know that this order is a candidate to trigger but need to simulate again with his amount 
+                // Simulate offering N amount of Token1
+                // Getting => X Token2 per N Token1
                 let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_book_peek.id.as_slice()).unwrap();
-                let amount: Uint128 = limit_order_data.clone().unwrap().balances[limit_order_data.clone().unwrap().order_token_index as usize];
-
+                let amount: Uint128;
+                if is_bid {
+                    amount = limit_order_data.clone().unwrap().expected_amount;
+                } else {
+                    amount = limit_order_data.clone().unwrap().deposit_amount;
+                }
+                
                 let response_amm_order_simulation: AmmPairSimulationResponse =
                 AmmSimulationQuery::simulation {
                     offer_asset: AmmSimulationOfferAsset{
-                        info: asset.clone(),
+                        info: asset1.clone(),
                         amount
                     }
                 }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
                 
-                // Here we have the final simulation for this and check if the returned amount coorespond to the amount requested on the limit order
-                // minimum bid       -       x
-                // amount bidded     -    AMM returned value
-                // Then compare x with the limit price
+                // Here we have the final simulation for this with slippage
+                // Check if deposited amount is >= simulated amount that comes from the swap
                 let would_trigger_total_amount: bool;
-                let returned_total_amount: Uint128 = response_amm_order_simulation.return_amount;
-                // amount bidded / minimum bid   ||   minimum bid / amount bidded
-                let amount_ratio: Uint128;
-                // amm returned value / amount ratio  ||  amm returned value * amount ratio
-                let amm_price_ratio: Uint128;
-                if amount >= token_data.base_amount {
-                    amount_ratio = Uint128::multiply_ratio(&Uint128(1), amount,token_data.base_amount);
-                    amm_price_ratio = Uint128::multiply_ratio(&returned_total_amount, Uint128(1), amount_ratio);
-                } else {
-                    amount_ratio = Uint128::multiply_ratio(&Uint128(1), token_data.base_amount,amount);
-                    amm_price_ratio = Uint128::multiply_ratio(&returned_total_amount, amount_ratio, Uint128(1));
-                };
                 
-                would_trigger_total_amount = order_book_peek.price >= amm_price_ratio;
-
+                if is_bid {
+                    would_trigger_total_amount = limit_order_data.clone().unwrap().deposit_amount >= response_amm_order_simulation.return_amount;
+                } else {
+                    would_trigger_total_amount = limit_order_data.clone().unwrap().expected_amount <= response_amm_order_simulation.return_amount;
+                }
+               
                 if would_trigger_total_amount {
                     //This order is elligible for a trigger so return it
                     return (Some(order_book_peek.clone().id), Some(limit_order_data.clone().unwrap()))

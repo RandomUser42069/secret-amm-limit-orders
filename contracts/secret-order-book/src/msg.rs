@@ -81,7 +81,8 @@ pub enum HandleMsg {
     },
     CreateLimitOrder {
         is_bid: bool,
-        price: Uint128
+        price: Uint128,
+        expected_amount: Uint128
     },
     WithdrawLimitOrder {},
     TriggerLimitOrders {}
@@ -213,8 +214,9 @@ pub struct LimitOrderState {
     pub is_bid: bool,
     pub status: String, //Active, PartiallyFilled, Filled
     pub price: Uint128,
-    pub order_token_index: i8,
-    pub order_token_init_quant: Uint128,
+    pub deposit_token_index: i8,
+    pub deposit_amount: Uint128,
+    pub expected_amount: Uint128,
     pub balances: Vec<Uint128>,
     pub timestamp: u64
 }
