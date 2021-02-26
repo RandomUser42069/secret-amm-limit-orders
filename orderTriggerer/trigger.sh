@@ -8,7 +8,7 @@ secretcli config trust-node true
 
 trigger_block=$(secretcli status | jq -r .sync_info.latest_block_height)
 
-order_factory_contract_address="secret1mqzhlna0ma2qwts84ljlrsa2pnj3u2ulw5vwyl"
+order_factory_contract_address="secret1dvvgwcx2zvf9ggx094mvjdu0wym2dn9wfnqq27"
 amm_pair_address="secret148jpzfh6lvencwtxa6czsk8mxm7kuecncz0g0y"
 
 orderbook_address=$(secretcli q compute query $order_factory_contract_address '{"secret_order_books": {"contract_address": "'$amm_pair_address'"}}' | jq -r .secret_order_books.secret_order_book.contract_addr)

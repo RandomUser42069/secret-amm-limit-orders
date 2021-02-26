@@ -594,7 +594,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     match msg {
         QueryMsg::OrderBookPairInfo {} => to_binary(&get_order_book_pair_info(deps)?),
-        QueryMsg::GetLimitOrders {user_address, user_viewkey} => to_binary(&get_limit_orders(deps, user_address, user_viewkey)?),
+        QueryMsg::GetLimitOrders {user_address, user_viewkey, limit, offset} => to_binary(&get_limit_orders(deps, user_address, user_viewkey, limit, offset)?),
         QueryMsg::CheckOrderBookTrigger {} => to_binary(&check_order_book_trigger(deps)?),
         _ => Err(StdError::generic_err("Handler not found!"))
     }
@@ -620,7 +620,9 @@ fn get_order_book_pair_info<S: Storage, A: Api, Q: Querier>(
 fn get_limit_orders<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     user_address: HumanAddr,
-    user_viewkey: String
+    user_viewkey: String,
+    limit: Option<i32>,
+    offset: Option<i32>
 ) -> StdResult<LimitOrdersQueryResponse> {
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
@@ -652,10 +654,16 @@ fn get_limit_orders<S: Storage, A: Api, Q: Querier>(
             }
     
             if user_order_map.clone().unwrap().history_orders.len() > 0 {
-                for i in 0..user_order_map.clone().unwrap().history_orders.len() {
+                let mut pagination_limit: usize = user_order_map.clone().unwrap().history_orders.len() as usize;
+                let mut pagination_offset: usize = 0 as usize;
+
+                if offset != None && offset.unwrap() <= pagination_limit as i32 { pagination_offset = offset.unwrap() as usize};
+                if limit != None && limit.unwrap() <= pagination_limit as i32 { pagination_limit = limit.unwrap() as usize};
+
+                for i in pagination_offset..pagination_limit {
                     let order_id = user_order_map.clone().unwrap().history_orders[i];
                     let limit_order_data:LimitOrderState = load(&limit_orders_data, &order_id.to_string().as_bytes()).unwrap();
-                    response.history_orders.push(limit_order_data);
+                    response.history_orders.insert(0,limit_order_data);
                 }
             }
         }
@@ -754,7 +762,7 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
                 }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
                 
                 // Here we have the final simulation for this with slippage
-                // Check if deposited amount is >= simulated amount that comes from the swap
+                // Check if deposited amount is <= simulated amount that comes from the swap
                 let would_trigger_total_amount: bool;
                 
                 if is_bid {

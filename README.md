@@ -3,11 +3,11 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Update WWW with history and active orders
-* Admin commands for updating?
-
-
+* Pagination
+* Statistics?
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
+
+* Admin commands for updating?
 * Clean some parts of the code that are not in use (clear native token and block native tokens)
 * refactor everything for token0 and token1
 * security revision

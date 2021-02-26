@@ -1,6 +1,9 @@
 import React, {useState,useEffect} from 'react';
 import {Card, Button, Spinner, Modal, DropdownButton, Dropdown, Table} from 'react-bootstrap'
 
+const PAGINATION_LIMIT = 10;
+const PAGINATION_OFFSET = 0;
+
 // eslint-disable-next-line import/no-anonymous-default-export
 export default ({
     ORDERS_FACTORY_ADDRESS,
@@ -79,7 +82,9 @@ const MyLimitOrder = ({
             const limitOrderPromise = client.execute.queryContractSmart(orderBookAddress, { 
                 get_limit_orders: {
                     user_address: client.accountData.address,
-                    user_viewkey: viewKey
+                    user_viewkey: viewKey,
+                    limit: PAGINATION_LIMIT,
+                    offset: PAGINATION_OFFSET
                 }
               })
 
@@ -98,7 +103,9 @@ const MyLimitOrder = ({
                 setLimitOrdersData(await client.execute.queryContractSmart(orderBookAddress, { 
                     get_limit_orders: {
                         user_address: client.accountData.address,
-                        user_viewkey: viewKey
+                        user_viewkey: viewKey,
+                        limit: PAGINATION_LIMIT,
+                        offset: PAGINATION_OFFSET
                     }
                   }));
                 setAmmPriceData(await getAmmPrice(orderBookTokenData))
@@ -170,7 +177,7 @@ const MyLimitOrder = ({
         const index = limitOrderData.is_bid ? 0 : 1;
         const amount = Math.round(limitOrderData.expected_amount/Math.pow(10,orderBookTokensData.assets_info[index].decimal_places) * 100000) / 100000;
 
-        return "Expected (>=): " + amount + " " + findTokenData(index).display_props.symbol
+        return "Expected (~): " + amount + " " + findTokenData(index).display_props.symbol
     }
 
     const rowStyle = limitOrdersData && limitOrdersData.active_order ? {

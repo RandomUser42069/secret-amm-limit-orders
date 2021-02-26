@@ -113,7 +113,9 @@ pub enum ResponseStatus {
 pub enum QueryMsg {
     GetLimitOrders {
         user_address: HumanAddr,
-        user_viewkey: String
+        user_viewkey: String,
+        limit: Option<i32>,
+        offset: Option<i32>
     },
     CheckOrderBookTrigger {},
     OrderBookPairInfo {}

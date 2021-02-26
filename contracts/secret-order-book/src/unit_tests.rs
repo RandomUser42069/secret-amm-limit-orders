@@ -1141,5 +1141,4 @@ mod tests {
                 native_token: None
         });
     }
-    
 }
