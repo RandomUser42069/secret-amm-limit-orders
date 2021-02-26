@@ -110,7 +110,7 @@ export default ({
                 </Modal.Header>
                 <Modal.Body>
                     {
-                        ammFactoryPairs && 
+                        tokensData && ammFactoryPairs && 
                             <DropdownButton id="dropdown-basic-button" title={
                                 selectedAmmFactoryPairIndex !== null ? 
                                     displaySymbolPair(ammFactoryPairs.pairs[selectedAmmFactoryPairIndex])

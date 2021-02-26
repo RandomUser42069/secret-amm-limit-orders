@@ -273,13 +273,19 @@ pub fn try_add_order_book_to_user<S: Storage, A: Api, Q: Querier>(
     } else {
         let mut user_order_books = PrefixedStorage::new(PREFIX_USER_ORDER_BOOKS, &mut deps.storage);
         let current_order_books: Option<Vec<HumanAddr>> = may_load(&user_order_books, &deps.api.canonical_address(&user_address)?.as_slice())?;
-       
+
         if current_order_books == None {
             save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &vec![load_secret_order_book.clone().unwrap().contract_addr])?;
         } else {
-            let mut new_user_order_books = current_order_books.unwrap();
-            new_user_order_books.push(load_secret_order_book.unwrap().contract_addr);
-            save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &new_user_order_books)?;
+            // check if its not a duplicated order book
+            let index = current_order_books.clone().unwrap().iter().position(|x| x == &load_secret_order_book.clone().unwrap().contract_addr);
+
+            // add if not found
+            if index == None {
+                let mut new_user_order_books = current_order_books.clone().unwrap();
+                new_user_order_books.push(load_secret_order_book.unwrap().contract_addr);
+                save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &new_user_order_books)?;
+            }
         }
     }
 

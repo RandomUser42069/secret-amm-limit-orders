@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{CanonicalAddr, Binary, Coin, Decimal, Extern, HumanAddr, Querier, QuerierResult, QueryRequest, StdResult, Uint128, WasmQuery, from_binary, testing::*, to_vec};
-    use crate::{contract::{BID_ORDER_QUEUE, SWAPPED_LIMIT_ORDER, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{OrderBookPairResponse, AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, save, may_load}};
+    use crate::{contract::{USER_ORDERS_MAP, BID_ORDER_QUEUE, SWAPPED_LIMIT_ORDER, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{OrderBookPairResponse, AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, save, may_load}};
     use crate::contract::{init};
     use crate::order_queues::OrderQueue;
     use cosmwasm_std::{Api, InitResponse, to_binary};
     use crate::contract::query;
     use crate::{msg::{InitMsg, 
+        UserOrderMap,
         LimitOrderState,
         AmmSimulationQuery,
         AmmPairSimulationResponse
@@ -195,9 +196,10 @@ mod tests {
         let user_address_bob = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
 
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_bob.as_slice()).unwrap();
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &Uint128(0).to_string().as_bytes()).unwrap();
 
         assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
+        assert_eq!(load_limit_order.clone().unwrap().creator, HumanAddr("bob".to_string()));
         assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(4000000000000000000));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(4000000000000000000)]);
@@ -206,35 +208,32 @@ mod tests {
         let user_address_alice = &deps.api.canonical_address(&HumanAddr("alice".to_string())).unwrap();
 
         let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &Uint128(1).to_string().as_bytes()).unwrap();
 
         assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
+        assert_eq!(load_limit_order.clone().unwrap().creator, HumanAddr("alice".to_string()));
         assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(5000000000000000000));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(5000000000000000000)]);
 
         // Check order queue
         let mut bid_order_book:OrderQueue=load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        assert_eq!(bid_order_book.peek().unwrap().id, user_address_alice.clone());
+        assert_eq!(bid_order_book.peek().unwrap().id, Uint128(1));
         assert_eq!(bid_order_book.peek().unwrap().price, Uint128(5000000000000000000));
-        assert_eq!(bid_order_book.pop().unwrap().id, user_address_alice.clone());
-        assert_eq!(bid_order_book.pop().unwrap().id, user_address_bob.clone());
+        assert_eq!(bid_order_book.pop().unwrap().id, Uint128(1));
+        assert_eq!(bid_order_book.pop().unwrap().id, Uint128(0));
         assert_eq!(bid_order_book.peek(), None);
         assert_eq!(bid_order_book.pop(), None);
 
-        // Trigerer send
-        /*let handle_msg = HandleMsg::TriggerLimitOrders {};
-        let handle_result = handle(&mut deps, mock_env("trigerer", &[]), handle_msg.clone());
-        assert!(
-            handle_result.is_ok(),
-            "handle() failed: {}",
-            handle_result.err().unwrap()
-        ); 
+        // get limit orders
+        /*let query_msg = QueryMsg::GetLimitOrders {
+            user_address: HumanAddr("alice".to_string()),
+            user_viewkey: "".to_string()
+        };
+        let query_result = query(&deps, query_msg);
 
-        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
-        assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(500000000000000)]);
-    */
+        let result:OrderBookPairResponse = from_binary(&query_result.unwrap()).unwrap();
+        */
         // withdraw
         let handle_msg = HandleMsg::WithdrawLimitOrder {};
 
@@ -244,6 +243,57 @@ mod tests {
             "handle() failed: {}",
             handle_result.err().unwrap()
         ); 
+
+        // add again
+        // Alice send
+        let handle_msg = HandleMsg::Receive {
+            sender: HumanAddr("token2address".to_string()), 
+            from: HumanAddr("alice".to_string()), 
+            amount: Uint128(14000000000000000000),
+            msg: Some(to_binary(&HandleMsg::CreateLimitOrder {
+                is_bid: true,
+                price: Uint128(7000000000000000000),
+                expected_amount: Uint128(2000000000000000000)
+            }).unwrap())
+        };
+
+        let handle_result = handle(&mut deps, mock_env("token2address", &[]), handle_msg.clone());
+
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        let mut bid_order_book:OrderQueue=load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        assert_eq!(bid_order_book.peek().unwrap().id, Uint128(2));
+
+        //check limit orders
+        let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
+        let user_order_map: UserOrderMap = load(&user_orders_map, &user_address_alice.as_slice()).unwrap();
+
+        assert_eq!(user_order_map.active_order, Some(Uint128(2)));
+        assert_eq!(user_order_map.history_orders[0], Uint128(1));
+        assert_eq!(user_order_map.history_orders.len(), 1);
+
+        //widthdraw again
+        let handle_msg = HandleMsg::WithdrawLimitOrder {};
+
+        let handle_result = handle(&mut deps, mock_env("alice", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        //check limit orders
+        let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
+        let user_order_map: UserOrderMap = load(&user_orders_map, &user_address_alice.as_slice()).unwrap();
+
+        assert_eq!(user_order_map.active_order, None);
+        assert_eq!(user_order_map.history_orders[0], Uint128(1));
+        assert_eq!(user_order_map.history_orders[1], Uint128(2));
+        assert_eq!(user_order_map.history_orders.len(), 2);
     }
 
     /*#[test]
@@ -1011,8 +1061,8 @@ mod tests {
             msg: None
         };
 
-        let order_id_can: CanonicalAddr = deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
-        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id_can);
+        let order_id: Uint128 = Uint128(0);
+        save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id);
 
         let handle_result = handle(&mut deps, mock_env("token2address", &[]), handle_msg.clone());
         assert!(

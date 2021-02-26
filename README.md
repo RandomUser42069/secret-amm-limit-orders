@@ -3,8 +3,7 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Balances on create limit order modal www
-* how to do a TVL?
+* Update WWW with history and active orders
 * Admin commands for updating?
 
 
@@ -15,7 +14,7 @@ TODO:
 ## Limitations
 * No Native token (for now)
 * Centralized way of triggering on each block
-* Only 1 limit order per account per pair
+* No fee taking to accomodate the triggerer gas fees
 
 ## What's done?
 ### Secret Order Book Factory Contract

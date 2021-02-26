@@ -9,7 +9,7 @@ import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret1lqsqe8kjeuk22vwhkkw3k787ykvcn4kk649mus" 
+const ORDERS_FACTORY_ADDRESS="secret1mqzhlna0ma2qwts84ljlrsa2pnj3u2ulw5vwyl" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {
@@ -34,6 +34,7 @@ function App() {
       setupKeplr(setClient);
       try {
         const response = await axios.get("https://scrt-bridge-api.azurewebsites.net/tokens/?page=0&size=1000");
+        throw Error("")
           setTokensData([...response.data.tokens,{
             dst_address: SSCRT_CONTRACT_ADDRESS,
             decimals: 6,
@@ -100,6 +101,7 @@ function App() {
                   /> 
                   <MyLimitOrders 
                     key={remountMyLimitOrdersCount} // Used to force remount this component
+                    remountMyLimitOrders={remountMyLimitOrders}
                     ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
                     tokensData={tokensData}
                     client={client}

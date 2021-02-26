@@ -1,4 +1,4 @@
-use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use cosmwasm_std::{Binary, CanonicalAddr, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use secret_toolkit::utils::{HandleCallback, Query};
 use serde::{Deserialize, Serialize};
@@ -111,7 +111,7 @@ pub enum ResponseStatus {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetLimitOrder {
+    GetLimitOrders {
         user_address: HumanAddr,
         user_viewkey: String
     },
@@ -208,9 +208,23 @@ pub struct OrderBookPairResponse {
     pub amm_pair_address: HumanAddr,
     pub assets_info: [AssetInfo;2]
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct LimitOrdersQueryResponse {
+    pub active_order: Option<LimitOrderState>,
+    pub history_orders: Vec<LimitOrderState>
+}
+
 // State
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct UserOrderMap {
+    pub active_order: Option<Uint128>,
+    pub history_orders: Vec<Uint128>
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LimitOrderState {
+    pub creator: HumanAddr,
     pub is_bid: bool,
     pub status: String, //Active, PartiallyFilled, Filled
     pub price: Uint128,
@@ -218,6 +232,7 @@ pub struct LimitOrderState {
     pub deposit_amount: Uint128,
     pub expected_amount: Uint128,
     pub balances: Vec<Uint128>,
+    pub withdrew_balance: Option<Vec<Uint128>>,
     pub timestamp: u64
 }
 
