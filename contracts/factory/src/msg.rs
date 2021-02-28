@@ -31,7 +31,9 @@ pub enum HandleMsg {
     ChangeSecretOrderBookContractCodeId {code_id: u64, code_hash: String},
     NewSecretOrderBookInstanciate {
         amm_pair_address: HumanAddr,
-        amm_pair_hash: String
+        amm_pair_hash: String,
+        token1_fee: Uint128,
+        token2_fee: Uint128
     },
     InitCallBackFromSecretOrderBookToFactory {
         auth_key: String, 
@@ -39,6 +41,11 @@ pub enum HandleMsg {
         contract_address: HumanAddr,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
+    },
+    ChangeAssetFee {
+        amm_pairs_address: Vec<HumanAddr>,
+        asset_contract_address: HumanAddr,
+        new_asset_fee: Uint128
     },
     AddOrderBookToUser {
         amm_pair_address: HumanAddr,
@@ -85,8 +92,12 @@ pub enum QueryMsg {
         factory_key: String
     },
     SecretOrderBookContractCodeId {},
+    SecretOrderBook {
+        amm_pair_contract_addr: HumanAddr,
+    },
     SecretOrderBooks {
-        contract_address: HumanAddr,
+        page_size: Option<u32>,
+        page: Option<u32>
     },
     UserSecretOrderBooks {
         address: HumanAddr,
@@ -102,7 +113,8 @@ pub enum QueryAnswer {
     /// result of authenticating address/key pair
     IsKeyValid { is_valid: bool },
     SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
-    SecretOrderBooks {secret_order_book: Option<SecretOrderBookContract>},
+    SecretOrderBooks {secret_order_books: Vec<SecretOrderBookContract>},
+    SecretOrderBook {secret_order_book: Option<SecretOrderBookContract>},
     UserSecretOrderBooks {user_secret_order_book: Option<Vec<HumanAddr>>},
     Error {},
 }
@@ -110,6 +122,7 @@ pub enum QueryAnswer {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct SecretOrderBookContract {
+    pub amm_pair_contract_addr: HumanAddr,
     pub contract_addr: HumanAddr,
     pub asset_infos: Vec<AssetInfo>
 }
@@ -120,6 +133,7 @@ pub struct AssetInfo {
     pub is_native_token: bool,
     pub decimal_places: u8,
     pub base_amount: Uint128,
+    pub fee_amount: Uint128,
     pub token: Option<Token>,
     pub native_token: Option<NativeToken>
 }

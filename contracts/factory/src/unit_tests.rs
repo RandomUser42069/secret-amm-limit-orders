@@ -234,6 +234,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 is_native_token: false,
+                fee_amount: Uint128(500000000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
@@ -241,6 +242,7 @@ mod tests {
                 is_native_token: true,
                 decimal_places:6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             },
@@ -261,6 +263,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
@@ -268,6 +271,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
             },
@@ -282,7 +286,66 @@ mod tests {
         ); 
         
         let query_msg = QueryMsg::SecretOrderBooks {
-            contract_address: HumanAddr("ammpaircontract1".to_string()),
+            page: None,
+            page_size: None
+        };
+    
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::SecretOrderBooks { secret_order_books } => {
+                assert_eq!(secret_order_books[0].asset_infos, vec![
+                    AssetInfo {
+                        decimal_places: 18,
+                        is_native_token: false,
+                        base_amount: Uint128(1000000000000000000),
+                        fee_amount: Uint128(500000000000000000),
+                        token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                        native_token: None
+                    },
+                    AssetInfo {
+                        is_native_token: true,
+                        token: None,
+                        base_amount: Uint128(1000000),
+                        fee_amount: Uint128(500000),
+                        decimal_places: 6,
+                        native_token: Some(NativeToken{denom:"uscrt".to_string()})
+                    }
+                ]);
+                assert_eq!(secret_order_books[0].amm_pair_contract_addr, HumanAddr("ammpaircontract1".to_string()));
+                assert_eq!(secret_order_books[0].contract_addr, HumanAddr("contract1".to_string()));
+                assert_eq!(secret_order_books[1].asset_infos, vec![
+                        AssetInfo {
+                            decimal_places: 18,
+                            is_native_token: false,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                            native_token: None
+                        },
+                        AssetInfo {
+                            is_native_token: false,
+                            decimal_places: 18,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+                            native_token: None
+                        }
+                    ]);
+                assert_eq!(secret_order_books[1].amm_pair_contract_addr, HumanAddr("ammpaircontract2".to_string()));
+                assert_eq!(secret_order_books[1].contract_addr, HumanAddr("contract2".to_string()));
+            },
+            _ => {}
+        }
+
+        let query_msg = QueryMsg::SecretOrderBook {
+            amm_pair_contract_addr: HumanAddr("ammpaircontract1".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -293,12 +356,13 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+            QueryAnswer::SecretOrderBook { secret_order_book } => {
                 assert_eq!(secret_order_book.unwrap().asset_infos, vec![
                     AssetInfo {
                         decimal_places: 18,
                         is_native_token: false,
                         base_amount: Uint128(1000000000000000000),
+                        fee_amount: Uint128(500000000000000000),
                         token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                         native_token: None
                     },
@@ -306,6 +370,7 @@ mod tests {
                         is_native_token: true,
                         token: None,
                         base_amount: Uint128(1000000),
+                        fee_amount: Uint128(500000),
                         decimal_places: 6,
                         native_token: Some(NativeToken{denom:"uscrt".to_string()})
                     }
@@ -315,8 +380,8 @@ mod tests {
         }
         
     
-        let query_msg = QueryMsg::SecretOrderBooks {
-            contract_address: HumanAddr("ammpaircontract2".to_string()),
+        let query_msg = QueryMsg::SecretOrderBook {
+            amm_pair_contract_addr: HumanAddr("ammpaircontract2".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -327,13 +392,14 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+            QueryAnswer::SecretOrderBook { secret_order_book } => {
                 assert_eq!(secret_order_book.unwrap().asset_infos, 
                     vec![
                         AssetInfo {
                             decimal_places: 18,
                             is_native_token: false,
                             base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         },
@@ -341,6 +407,7 @@ mod tests {
                             is_native_token: false,
                             decimal_places: 18,
                             base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                             native_token: None
                         }
@@ -349,8 +416,8 @@ mod tests {
             _ => {}
         }
 
-        let query_msg = QueryMsg::SecretOrderBooks {
-            contract_address: HumanAddr("ammpaircontract3".to_string()),
+        let query_msg = QueryMsg::SecretOrderBook {
+            amm_pair_contract_addr: HumanAddr("ammpaircontract3".to_string()),
         };
     
         let query_result = query(&deps, query_msg);
@@ -361,7 +428,7 @@ mod tests {
         );
         let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
         match query_answer {
-            QueryAnswer::SecretOrderBooks { secret_order_book } => {
+            QueryAnswer::SecretOrderBook { secret_order_book } => {
                 assert_eq!(secret_order_book, None)
             },
             _ => {}
@@ -390,6 +457,7 @@ mod tests {
             token1_info: AssetInfo {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 is_native_token: false,
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
@@ -398,6 +466,7 @@ mod tests {
                 is_native_token: true,
                 decimal_places:6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             },
@@ -417,6 +486,7 @@ mod tests {
             token1_info: AssetInfo {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 is_native_token: false,
                 token: Some(Token {contract_addr:HumanAddr("token2".to_string()),token_code_hash:"".to_string()}),
                 native_token: None
@@ -425,6 +495,7 @@ mod tests {
                 is_native_token: true,
                 decimal_places:6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: None,
                 native_token: Some(NativeToken{denom:"uscrt".to_string()})
             },

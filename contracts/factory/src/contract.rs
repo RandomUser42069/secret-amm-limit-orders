@@ -7,7 +7,7 @@ use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
  
-use secret_toolkit::{snip20::token_info_query, utils::{InitCallback, Query}};
+use secret_toolkit::{snip20::token_info_query, storage::{AppendStore, AppendStoreMut}, utils::{InitCallback, Query}};
 
 /// prefix for viewing keys
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
@@ -23,6 +23,8 @@ pub const SECRET_ORDER_BOOK_CONTRACT_CODE_HASH: &[u8] = b"secretorderbookcontrac
 pub const FACTORY_KEY: &[u8] = b"factorykey";
 /// storage key for the secret order books
 pub const PREFIX_SECRET_ORDER_BOOKS: &[u8] = b"secretorderbooks";
+/// storage key for the secret order books
+pub const PREFIX_SECRET_ORDER_BOOK: &[u8] = b"secretorderbook";
 /// storage key for users to get on which order books they have limit orders
 pub const PREFIX_USER_ORDER_BOOKS: &[u8] = b"userorderbooks";
 /// storage key for the amm factory address
@@ -59,8 +61,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::ChangeSecretOrderBookContractCodeId { code_id, code_hash } => try_change_secret_order_book_contract_code_id(deps, env, &code_id, &code_hash),
         HandleMsg::NewSecretOrderBookInstanciate {
             amm_pair_address,
-            amm_pair_hash
-        } => try_secret_order_book_instanciate(deps, env, &amm_pair_address, &amm_pair_hash),
+            amm_pair_hash,
+            token1_fee,
+            token2_fee
+        } => try_secret_order_book_instanciate(deps, env, &amm_pair_address, &amm_pair_hash, &token1_fee, &token2_fee),
         HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key, 
             amm_pair_address,
@@ -68,6 +72,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             token1_info, 
             token2_info
         } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address, token1_info, token2_info),
+        HandleMsg::ChangeAssetFee {
+            amm_pairs_address,
+            asset_contract_address,
+            new_asset_fee
+        } => try_change_asset_fee(deps, env, amm_pairs_address, asset_contract_address, new_asset_fee),
         HandleMsg::AddOrderBookToUser { amm_pair_address, user_address } => try_add_order_book_to_user(deps, env, &amm_pair_address, &user_address),
         HandleMsg::RemoveOrderBookFromUser {  amm_pair_address, user_address } => try_remove_order_book_to_user(deps, env, &amm_pair_address, &user_address)
     }
@@ -117,30 +126,35 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     amm_pair_address: &HumanAddr,
-    amm_pair_hash: &String
+    amm_pair_hash: &String,
+    token1_fee: &Uint128,
+    token2_fee: &Uint128
 ) -> HandleResult {  
     let secret_order_book_contract_code_id: u64 = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_ID)?;
     let secret_order_book_contract_code_hash: String = load(&deps.storage, SECRET_ORDER_BOOK_CONTRACT_CODE_HASH)?;
     let factory_key: String = load(&deps.storage, FACTORY_KEY)?;
+    let admin: HumanAddr = load(&deps.storage, ADMIN_KEY)?;
+    if env.message.sender != admin {
+        return Err(StdError::generic_err(
+            "Permission Denied.",
+        ));
+    }
 
     // check the info from pair AMM
     let response: AmmPairResponse =
     AmmQueryMsg::Pair {}.query(&deps.querier, amm_pair_hash.to_string(), amm_pair_address.to_owned())?;
 
     let mut token1_info: AssetInfo = match response.asset_infos[0].clone() {
-        AmmAssetInfo::NativeToken { denom } => AssetInfo {
-            is_native_token: true,
-            decimal_places: 6,
-            base_amount: Uint128(0),
-            token: None,
-            native_token: Some(NativeToken {
-                denom
-            })
+        AmmAssetInfo::NativeToken { denom } => {
+            return Err(StdError::generic_err(
+                "Native token not supported!",
+            ));
         },
         AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
             is_native_token: false,
             decimal_places: 0,
             base_amount: Uint128(0),
+            fee_amount: token1_fee.clone(),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash
@@ -150,19 +164,16 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     };
 
     let mut token2_info: AssetInfo = match response.asset_infos[1].clone() {
-        AmmAssetInfo::NativeToken { denom } => AssetInfo {
-            is_native_token: true,
-            token: None,
-            decimal_places: 6,
-            base_amount: Uint128(0),
-            native_token: Some(NativeToken {
-                denom
-            })
+        AmmAssetInfo::NativeToken { denom } => {
+            return Err(StdError::generic_err(
+                "Native token not supported!",
+            ));
         },
         crate::msg::AmmAssetInfo::Token { contract_addr, token_code_hash, viewing_key } => AssetInfo {
             is_native_token: false,
             decimal_places: 0,
             base_amount: Uint128(0),
+            fee_amount: token2_fee.clone(),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash
@@ -174,26 +185,17 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
     let token1_symbol:String;
     let token2_symbol:String;
     //query tokens info and get symbols from Addresses
-    match token1_info.clone().is_native_token {
-        true => token1_symbol="SCRT".to_string(),
-        false => {
-            let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.clone().token.unwrap().token_code_hash, token1_info.clone().token.unwrap().contract_addr).unwrap();
-            token1_symbol = response_token1.clone().symbol;
-            token1_info.decimal_places = response_token1.clone().decimals;
-        }
-    }
-    match token2_info.clone().is_native_token {
-        true => token2_symbol="SCRT".to_string(),
-        false => {
-            let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.clone().token.unwrap().token_code_hash, token2_info.clone().token.unwrap().contract_addr).unwrap();
-            token2_symbol = response_token2.clone().symbol;
-            token2_info.decimal_places = response_token2.clone().decimals;
-        }
-    }
+    let response_token1 = token_info_query(&deps.querier,BLOCK_SIZE,token1_info.clone().token.unwrap().token_code_hash, token1_info.clone().token.unwrap().contract_addr).unwrap();
+    token1_symbol = response_token1.clone().symbol;
+    token1_info.decimal_places = response_token1.clone().decimals;
+
+    let response_token2 = token_info_query(&deps.querier,BLOCK_SIZE,token2_info.clone().token.unwrap().token_code_hash, token2_info.clone().token.unwrap().contract_addr).unwrap();
+    token2_symbol = response_token2.clone().symbol;
+    token2_info.decimal_places = response_token2.clone().decimals;
    
     token1_info.base_amount = Uint128(u128::pow(10,token1_info.decimal_places as u32));
-    token2_info.base_amount = Uint128(u128::pow(10,token1_info.decimal_places as u32));
-    //TODO: Deal with duplicated token symbols
+    token2_info.base_amount = Uint128(u128::pow(10,token2_info.decimal_places as u32));
+
     let initmsg = SecretOrderBookContractInitMsg {
         factory_hash: env.contract_code_hash,
         factory_address: env.contract.address,
@@ -240,6 +242,7 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     }
 
     let secret_order_book_contract:SecretOrderBookContract = SecretOrderBookContract{
+        amm_pair_contract_addr: amm_pair_address.clone(),
         contract_addr: contract_address,
         asset_infos: vec![
             token1_info,
@@ -247,11 +250,60 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
         ]
     };
 
+    // Store this contract
     let mut secret_order_books = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &mut deps.storage);
-    save(&mut secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice(), &secret_order_book_contract)?;
+    let mut secret_order_books = AppendStoreMut::attach_or_create(&mut secret_order_books)?;
+    secret_order_books.push(&secret_order_book_contract)?;
+
+    let mut secret_order_book = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &mut deps.storage);
+    save(&mut secret_order_book, &deps.api.canonical_address(&amm_pair_address.clone())?.as_slice(), &secret_order_book_contract)?;
 
     Ok(HandleResponse::default())
 }
+
+pub fn try_change_asset_fee<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amm_pairs_address: Vec<HumanAddr>,
+    asset_contract_address: HumanAddr,
+    new_asset_fee: Uint128
+) -> HandleResult {   
+    let admin: HumanAddr = load(&deps.storage, ADMIN_KEY)?;
+    if env.message.sender != admin {
+        return Err(StdError::generic_err(
+            "Permission Denied.",
+        ));
+    }
+    // 1. Get each secret order book associated with each amm_pair_address indicated
+    let mut secret_order_books = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &mut deps.storage);
+    
+    for i in 0..amm_pairs_address.len() { 
+        let secret_order_book: SecretOrderBookContract = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice())?.unwrap();
+        let mut modified_secret_order_book:SecretOrderBookContract = secret_order_book.clone();
+        let token_index: usize;
+
+        // 2. Search the asset info that have the asset_contract_address indicated
+        if modified_secret_order_book.asset_infos[0].token.clone().unwrap().contract_addr == asset_contract_address { token_index = 0 }
+        else if modified_secret_order_book.asset_infos[1].token.clone().unwrap().contract_addr == asset_contract_address { token_index = 1 }
+        else {
+            return Err(StdError::generic_err(format!(
+                "Error on: {:?}", amm_pairs_address[i]
+            ))); 
+        }
+
+        // TODO
+        // 3. Modify the asset_info with the new fee and send to the secret order book this change
+        // 3.1 PREFIX_SECRET_ORDER_BOOK
+        // 3.2 PREFIX_SECRET_ORDER_BOOKS
+        // 3.3 SEND TO SECRET ORDER BOOK CONTRACTS
+        modified_secret_order_book.asset_infos[token_index].fee_amount = new_asset_fee;
+
+        save(&mut secret_order_books, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice(), &modified_secret_order_book)?;
+    }
+
+    Ok(HandleResponse::default())
+}
+
 
 pub fn try_add_order_book_to_user<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -259,7 +311,7 @@ pub fn try_add_order_book_to_user<S: Storage, A: Api, Q: Querier>(
     amm_pair_address: &HumanAddr,
     user_address: &HumanAddr
 ) -> HandleResult {   
-    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &deps.storage);
     let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice())?;
 
     if load_secret_order_book == None {
@@ -278,12 +330,12 @@ pub fn try_add_order_book_to_user<S: Storage, A: Api, Q: Querier>(
             save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &vec![load_secret_order_book.clone().unwrap().contract_addr])?;
         } else {
             // check if its not a duplicated order book
-            let index = current_order_books.clone().unwrap().iter().position(|x| x == &load_secret_order_book.clone().unwrap().contract_addr);
+            let index = current_order_books.clone().unwrap().iter().position(|x| x == &load_secret_order_book.clone().unwrap().contract_addr.clone());
 
             // add if not found
             if index == None {
                 let mut new_user_order_books = current_order_books.clone().unwrap();
-                new_user_order_books.push(load_secret_order_book.unwrap().contract_addr);
+                new_user_order_books.push(load_secret_order_book.unwrap().contract_addr.clone());
                 save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &new_user_order_books)?;
             }
         }
@@ -298,7 +350,7 @@ pub fn try_remove_order_book_to_user<S: Storage, A: Api, Q: Querier>(
     amm_pair_address: &HumanAddr,
     user_address: &HumanAddr
 ) -> HandleResult {   
-    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &deps.storage);
     let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pair_address)?.as_slice())?;
 
     if load_secret_order_book == None {
@@ -314,7 +366,7 @@ pub fn try_remove_order_book_to_user<S: Storage, A: Api, Q: Querier>(
         let current_user_order_books: Option<Vec<HumanAddr>> = may_load(&user_order_books, &deps.api.canonical_address(&user_address)?.as_slice())?;
        
         let mut modified_user_order_books= current_user_order_books.clone().unwrap();
-        modified_user_order_books.retain(|x| x != &load_secret_order_book.clone().unwrap().contract_addr);
+        modified_user_order_books.retain(|x| x != &load_secret_order_book.clone().unwrap().contract_addr.clone());
 
         if modified_user_order_books.len() != 0 {
             save(&mut user_order_books, &deps.api.canonical_address(&user_address)?.as_slice(), &modified_user_order_books.clone())?;
@@ -337,7 +389,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
             factory_key
         } => try_validate_key(deps, &address, viewing_key, factory_key),
         QueryMsg::SecretOrderBookContractCodeId {} => secret_order_book_contract_code_id(deps),
-        QueryMsg::SecretOrderBooks {contract_address} => secret_order_books(deps,contract_address),
+        QueryMsg::SecretOrderBook {amm_pair_contract_addr} => secret_order_book(deps,amm_pair_contract_addr),
+        QueryMsg::SecretOrderBooks {page_size, page} => secret_order_books(deps, page_size, page),
         QueryMsg::UserSecretOrderBooks {
             address,
             viewing_key
@@ -400,14 +453,49 @@ fn secret_order_book_contract_code_id <S: Storage, A: Api, Q: Querier>(
 
 fn secret_order_books <S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    contract_address: HumanAddr
+    page_size: Option<u32>,
+    page: Option<u32>
 ) -> QueryResult {
     let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &deps.storage);
-    let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&contract_address)?.as_slice())?;
+    
+    let store = if let Some(result) = AppendStore::<SecretOrderBookContract, _>::attach(&secret_order_books) {
+        result?
+    } else {
+        return to_binary(&QueryAnswer::SecretOrderBooks {
+            secret_order_books: vec![]
+        });
+    };
 
-    to_binary(&QueryAnswer::SecretOrderBooks {
+    let response:Vec<SecretOrderBookContract>;
+    if page_size != None && page != None {
+        let tx_iter = store
+        .iter()
+        .skip((page.unwrap() * page_size.unwrap()) as _)
+        .take(page_size.unwrap() as _);
+
+        let txs: StdResult<Vec<SecretOrderBookContract>> = tx_iter.collect();
+        response = txs.unwrap()
+    } else {
+        let tx_iter = store.iter();
+        let txs: StdResult<Vec<SecretOrderBookContract>> = tx_iter.collect();
+        response = txs.unwrap()
+    }
+
+    return to_binary(&QueryAnswer::SecretOrderBooks {
+        secret_order_books: response
+    });
+}
+
+fn secret_order_book <S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    amm_pair_contract_addr: HumanAddr
+) -> QueryResult {
+    let secret_order_books = ReadonlyPrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &deps.storage);
+    let load_secret_order_book: Option<SecretOrderBookContract> = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pair_contract_addr)?.as_slice())?;
+
+    to_binary(&QueryAnswer::SecretOrderBook {
         secret_order_book: load_secret_order_book
-    })
+    }) 
 }
 
 fn user_secret_order_books <S: Storage, A: Api, Q: Querier>(

@@ -244,6 +244,7 @@ pub struct AssetInfo {
     pub is_native_token: bool,
     pub decimal_places: u8,
     pub base_amount: Uint128,
+    pub fee_amount: Uint128,
     pub token: Option<Token>,
     pub native_token: Option<NativeToken>
 }

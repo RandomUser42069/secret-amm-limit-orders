@@ -123,6 +123,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -135,6 +136,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -426,6 +428,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -438,6 +441,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -715,6 +719,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -727,6 +732,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1005,6 +1011,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -1017,6 +1024,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1082,6 +1090,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -1094,6 +1103,7 @@ mod tests {
                 is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1120,6 +1130,7 @@ mod tests {
             is_native_token: false,
             decimal_places: 6,
             base_amount: Uint128(1000000),
+            fee_amount: Uint128(500000),
             token: Some(
                 Token {
                     contract_addr: HumanAddr("token1address".to_string()),
@@ -1132,6 +1143,7 @@ mod tests {
             is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),

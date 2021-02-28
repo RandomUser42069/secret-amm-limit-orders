@@ -3,14 +3,21 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* Pagination
-* Statistics?
+** TODO: Implement the fee logic after the swap (trigger of a limit order)
+** TODO: Implement new method of storing the old limit orders
+** TODO: Admin can change the fees for an asset
+
+
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
+* This fee is transfered to the triggerer account when the swap message is received (Fee in Buy Token or Sell Token?)
+* Clean some parts of the code that are not in use (clear native token and block native tokens)
+* security revision
+
+* Future:
+	* Statistics? TVL with band oracle integration
 
 * Admin commands for updating?
-* Clean some parts of the code that are not in use (clear native token and block native tokens)
-* refactor everything for token0 and token1
-* security revision
+
 ## Limitations
 * No Native token (for now)
 * Centralized way of triggering on each block
