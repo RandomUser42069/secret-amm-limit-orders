@@ -3,13 +3,14 @@ import logo from './logo.svg';
 import './App.css';
 import { SigningCosmWasmClient } from 'secretjs';
 import ViewKeyButton from "./Containers/ViewKeyButton"
-import MyLimitOrders from "./Containers/MyLimitOrders"
+import MyActiveLimitOrders from "./Containers/MyActiveLimitOrders"
+import MyHistoryLimitOrders from "./Containers/MyHistoryLimitOrders"
 import 'bootstrap/dist/css/bootstrap.min.css';
 import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret1glddwdu57x672wz8lm9k8lacvrwhhplsqrzz50" 
+const ORDERS_FACTORY_ADDRESS="secret1q8rweswapxny72l3xmxwel55gvtz4xrcx0ursk" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {
@@ -99,7 +100,18 @@ function App() {
                     remountMyLimitOrders={remountMyLimitOrders}
                   /> 
                   {
-                    <MyLimitOrders 
+                    <MyActiveLimitOrders 
+                      key={remountMyLimitOrdersCount} // Used to force remount this component
+                      remountMyLimitOrders={remountMyLimitOrders}
+                      ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+                      tokensData={tokensData}
+                      client={client}
+                      viewKey={viewKey.value}
+                    />
+                  }
+                  <br/><br/><br/>
+                  {
+                    <MyHistoryLimitOrders 
                       key={remountMyLimitOrdersCount} // Used to force remount this component
                       remountMyLimitOrders={remountMyLimitOrders}
                       ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}

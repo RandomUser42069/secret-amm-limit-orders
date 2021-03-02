@@ -28,6 +28,7 @@ export default ({
 
     return (
         <div>
+            HISTORY ORDERS
             <Table striped bordered hover>
                 <thead>
                     <tr>
@@ -37,7 +38,6 @@ export default ({
                         <th>Status</th>
                         <th>Limit Order</th>
                         <th>Triggered Price</th>
-                        <th>Current Price</th>
                         <th>Withdraw</th>
                     </tr>
                 </thead>
@@ -73,18 +73,18 @@ const MyLimitOrder = ({
     myLimitOrders,
     setMyLimitOrders
 }: any) => {
-    const [limitOrdersData, setLimitOrdersData] = useState<any>(null)
+    const [historyLimitOrdersData, setHistoryLimitOrdersData] = useState<any>(null)
     const [orderBookTokensData, setOrderBookTokensData] = useState<any>(null)
     const [ammPriceData, setAmmPriceData] = useState<any>(null)
 
     useEffect(() => {
         async function init() {
             const limitOrderPromise = client.execute.queryContractSmart(orderBookAddress, { 
-                get_limit_orders: {
+                get_history_limit_orders: {
                     user_address: client.accountData.address,
                     user_viewkey: viewKey,
-                    limit: PAGINATION_LIMIT,
-                    offset: PAGINATION_OFFSET
+                    page_size: PAGINATION_LIMIT,
+                    page: PAGINATION_OFFSET
                 }
               })
 
@@ -92,28 +92,28 @@ const MyLimitOrder = ({
                 order_book_pair_info: {}
               })
 
-            const [limitOrders, orderBookTokenData] = await Promise.all([limitOrderPromise, orderBookTokenDataPromise]);
+            const [limitOrder, orderBookTokenData] = await Promise.all([limitOrderPromise, orderBookTokenDataPromise]);
 
-            setLimitOrdersData(limitOrders)
-            setOrderBookTokensData(orderBookTokenData)
-
-            setAmmPriceData(await getAmmPrice(orderBookTokenData))
+            console.log(limitOrder)
+            setHistoryLimitOrdersData(limitOrder.history_limit_orders.history_limit_orders)
+            setOrderBookTokensData(orderBookTokenData.order_book_pair)
+            setAmmPriceData(await getAmmPrice(orderBookTokenData.order_book_pair))
 
             setInterval(async () => {
-                setLimitOrdersData(await client.execute.queryContractSmart(orderBookAddress, { 
-                    get_limit_orders: {
+                const limitOrder = await client.execute.queryContractSmart(orderBookAddress, { 
+                    get_history_limit_orders: {
                         user_address: client.accountData.address,
                         user_viewkey: viewKey,
-                        limit: PAGINATION_LIMIT,
-                        offset: PAGINATION_OFFSET
+                        page_size: PAGINATION_LIMIT,
+                        page: PAGINATION_OFFSET
                     }
-                  }));
-                setAmmPriceData(await getAmmPrice(orderBookTokenData))
+                  })
+                setHistoryLimitOrdersData(limitOrder.history_limit_orders.history_limit_orders);
+                setAmmPriceData(await getAmmPrice(orderBookTokenData.order_book_pair))
             },12000)
           }
         init()
     }, [])
-
 
     const getAmmPrice = async (orderBookTokenData: any) => {
         return client.execute.queryContractSmart(orderBookTokenData.amm_pair_address, { 
@@ -148,10 +148,14 @@ const MyLimitOrder = ({
         } else if (type === "amm") {
             return Math.round(ammPriceData.return_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000 + " " + token2Data.display_props.symbol + " per " + token1Data.display_props.symbol 
         } else if (type === "triggered") {
-            if (limitOrderData.is_bid) {
-                return (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.balances[0]/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
+            if (limitOrderData.withdrew_balance) {
+                if (limitOrderData.is_bid) {
+                    return (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.withdrew_balance[0]/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
+                } else {
+                    return (Math.round(limitOrderData.withdrew_balance[1]/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
+                }
             } else {
-                return (Math.round(limitOrderData.balances[1]/Math.pow(10,orderBookTokensData.assets_info[1].decimal_places) * 100000) / 100000) / (Math.round(limitOrderData.deposit_amount/Math.pow(10,orderBookTokensData.assets_info[0].decimal_places) * 100000) / 100000) + " " +  token2Data.display_props.symbol + " per " + token1Data.display_props.symbol
+                return "-"
             }
         }
     }
@@ -180,59 +184,11 @@ const MyLimitOrder = ({
         return "Expected (~): " + amount + " " + findTokenData(index).display_props.symbol
     }
 
-    const rowStyle = limitOrdersData && limitOrdersData.active_order ? {
-        backgroundColor: limitOrdersData.active_order.status === "Filled" ? "#Cfffbc" : "#Fff4ad"
-    } : undefined
-    
     return (
         <React.Fragment>
             {
-                // active order
-                limitOrdersData && limitOrdersData.active_order &&
-                    <tr key={orderBookAddress} style={rowStyle}>
-                        <td>{new Date(limitOrdersData.active_order.timestamp*1000).toLocaleString()}</td>
-                        {orderBookTokensData && tokensData && <td>{pairDisplay()}</td>}
-                        <td>{limitOrdersData.active_order.is_bid ? "Buy" : "Sell"}</td>
-                        <td>{limitOrdersData.active_order.status}</td>
-                        {orderBookTokensData && 
-                            <div>
-                                {displayPrice("order", limitOrdersData.active_order)} <br/><br/>
-                                {getDepositedAmount(limitOrdersData.active_order)}<br/>
-                                {getExpectedAmount(limitOrdersData.active_order)}
-                            </div>}
-                        {<td>{
-                            <div>
-                                {
-                                    ammPriceData && 
-                                    limitOrdersData.active_order.status === "Filled" ? 
-                                    displayPrice("triggered", limitOrdersData.active_order)
-                                    : " - "}
-                            </div>
-                        }</td>}
-                        {<td>{ammPriceData ? displayPrice("amm", limitOrdersData.active_order) : " - "}</td>}
-                        {limitOrdersData && <td>{<Button onClick={ async () => {
-                            try{
-                                await client.execute.execute(orderBookAddress, { 
-                                    withdraw_limit_order: {}
-                                })
-                                let update = {...myLimitOrders}
-                                let arr = update.user_secret_order_books.user_secret_order_book.filter((address: string) => address !== orderBookAddress)
-                                update.user_secret_order_books.user_secret_order_book = arr
-                                setMyLimitOrders(update)
-                                remountMyLimitOrders()
-                            } catch (e) {
-                                alert("error on widthdraw: " + e)
-                            }
-                        }}>
-                            Widthdraw <br/>
-                            {limitOrdersData && orderBookTokensData && displayBalance(0, limitOrdersData.active_order) + "  and  " + displayBalance(1, limitOrdersData.active_order)}
-                        </Button>}</td>}
-                    </tr>
-            }
-            {
-                // active order
-                limitOrdersData && limitOrdersData.history_orders.length > 0 && 
-                    limitOrdersData.history_orders.map((history_order:any) => 
+                historyLimitOrdersData && historyLimitOrdersData.length > 0 && 
+                    historyLimitOrdersData.map((history_order:any) => 
                         <tr key={history_order.timestamp}>
                             <td>{new Date(history_order.timestamp*1000).toLocaleString()}</td>
                             {orderBookTokensData && tokensData && <td>{pairDisplay()}</td>}
@@ -248,12 +204,11 @@ const MyLimitOrder = ({
                                 <div>
                                     {
                                         ammPriceData && 
-                                        history_order.status === "Filled" ? 
+                                        history_order.status === "Withdrew" ? 
                                         displayPrice("triggered", history_order)
                                         : " - "}
                                 </div>
                             }</td>}
-                            {<td> - </td>}
                             {<td>Withdrew:  {history_order.withdrew_balance && orderBookTokensData && displayBalance(0, history_order, true) + "  and  " + displayBalance(1, history_order, true)}</td>}
                         </tr>
                     )

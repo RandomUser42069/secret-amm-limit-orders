@@ -26,7 +26,7 @@ fi
 #echo factory address?
 #read factory_contract_address
 
-factory_contract_address="secret1glddwdu57x672wz8lm9k8lacvrwhhplsqrzz50"
+factory_contract_address="secret1q8rweswapxny72l3xmxwel55gvtz4xrcx0ursk"
 
 secretcli q account $(secretcli keys show -a a)
 
@@ -43,6 +43,11 @@ STORE_TX_HASH=$(
 )
 wait_for_tx "$STORE_TX_HASH" "Waiting for instantiate to finish on-chain..."
 echo $(secretcli query compute tx $STORE_TX_HASH)
+
+amm_pair_address="secret148jpzfh6lvencwtxa6czsk8mxm7kuecncz0g0y"
+amm_pair_hash="f86b5c3ca0381ce7edfffa534789501ae17cf6b21515213693baf980765729c2"
+secretcli tx compute execute $factory_contract_address '{"new_secret_order_book_instanciate": { "amm_pair_address": "'$amm_pair_address'", "amm_pair_hash": "'$amm_pair_hash'", "token1_fee": "0", "token2_fee": "0"}}' --from a -y --gas 1500000 -b block 
+
 
 #STORE_TX_HASH=$(
 #  secretcli tx compute execute secret19qepenq0p7rz5nc5ak7pvxr8fax2yswfagwzc3 '{"new_secret_order_book_instanciate": {"token1_info": {"is_native_token": true, "native_token":{"denom": "uscrt"}}, "token2_info": {"is_native_token": false, "token":{"contract_addr":"secret1j50u6hvume8pkq2c7lcmktrzd7lrymxhujrnax","token_code_hash": "78bdf9cdd7538fc96dfb18372635a20162243e49ca9bcd4bd2aff6300d2bc5e2"}}}}' --from a -y --gas 1500000 -b block |

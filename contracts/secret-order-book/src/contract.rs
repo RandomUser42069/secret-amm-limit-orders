@@ -1,18 +1,17 @@
-use cosmwasm_std::{Decimal, Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg, Empty, Env, Extern, HandleResponse, HumanAddr, InitResponse, LogAttribute, Querier, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
+use cosmwasm_std::{Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg, Decimal, Empty, Env, Extern, HandleResponse, HumanAddr, InitResponse, LogAttribute, Querier, QueryResult, StdError, StdResult, Storage, Uint128, WasmMsg, from_binary, to_binary};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
-use secret_toolkit::{snip20, utils::{HandleCallback, Query}};
+use secret_toolkit::{snip20, storage::{AppendStore, AppendStoreMut}, utils::{HandleCallback, Query}};
 use secret_toolkit::snip20::transfer_msg;
-use crate::{msg::{AmmAssetInfo, AmmFactoryPairResponse, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, LimitOrdersQueryResponse, OrderBookPairResponse, QueryMsg, ResponseStatus, Snip20Msg, UserOrderMap}, state::{load, may_load, remove, save}};
+use crate::{msg::{AmmAssetInfo, AmmPairReverseSimulationResponse, AmmPairSimulationResponse, AmmSimulationOfferAsset, AmmSimulationQuery, AssetInfo, FactoryHandleMsg, FactoryQueryMsg, HandleAnswer, HandleMsg, InitMsg, IsKeyValidResponse, LimitOrderState, QueryAnswer, QueryMsg, ResponseStatus, Snip20Msg, UserOrderMap}, state::{load, may_load, remove, save}};
 use crate::order_queues::OrderQueue;
 pub const FACTORY_DATA: &[u8] = b"factory";
 pub const AMM_PAIR_DATA: &[u8] = b"ammpair";
 pub const TOKEN1_DATA: &[u8] = b"token1";
 pub const TOKEN2_DATA: &[u8] = b"token2";
-pub const USER_ORDERS_MAP: &[u8] = b"userorders";
-pub const LIMIT_ORDERS: &[u8] = b"limitorders";
+pub const HISTORY_LIMIT_ORDERS: &[u8] = b"historylimitorders";
+pub const ACTIVE_LIMIT_ORDERS: &[u8] = b"activelimitorders";
 pub const BID_ORDER_QUEUE: &[u8] = b"bidordequeue";
 pub const ASK_ORDER_QUEUE: &[u8] = b"askorderqueue";
-pub const ID_COUNT: &[u8] = b"idcount";
 pub const SWAPPED_LIMIT_ORDER: &[u8] = b"swappedlimitorder";
 pub const BLOCK_SIZE: usize = 256;
 
@@ -35,8 +34,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut amm_pair_data = PrefixedStorage::new(AMM_PAIR_DATA, &mut deps.storage);
     save(&mut amm_pair_data, b"address", &msg.amm_pair_contract_address)?;
     save(&mut amm_pair_data, b"hash", &msg.amm_pair_contract_hash)?;
-    
-    save(&mut deps.storage, ID_COUNT, &Uint128(0))?;
 
     // send register to snip20
     let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.contract_code_hash))?;
@@ -230,9 +227,9 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     let user_address = deps.api.canonical_address(&from)?;
 
     // check if this user already has a limit order here
-    let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
-    let limit_order_data: Option<UserOrderMap> = may_load(&user_orders_map, user_address.as_slice())?;
-    if limit_order_data != None && limit_order_data.unwrap().active_order != None {
+    let active_limit_orders = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&active_limit_orders, user_address.as_slice())?;
+    if limit_order_data != None {
         return Err(StdError::generic_err(format!(
             "User already has a limit order for this pair. To create a new one withdraw the other one!"
         ))); 
@@ -268,11 +265,8 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
 
     let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
 
-    let id:Uint128 = load(&deps.storage,ID_COUNT)?;
-
     //Create Limit order
     let limit_order = LimitOrderState {
-        creator: from.clone(),
         is_bid,
         status: "Active".to_string(),
         price,
@@ -284,14 +278,14 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         withdrew_balance: None
     };
     
-    let mut key_store = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
-    save(&mut key_store, &id.to_string().as_bytes(), &limit_order)?;
+    let mut key_store = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
+    save(&mut key_store, &user_address.as_slice(), &limit_order)?;
 
     // Update Order Book
     if is_bid {
         let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
         bid_order_book.insert(
-            id,
+            from.clone(),
             price,
             env.block.time
         );
@@ -299,30 +293,11 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     } else {
         let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
         ask_order_book.insert(
-            id,
+            from.clone(),
             price,
             env.block.time
         );
         save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
-    }
-
-    // Up order count
-    save(&mut deps.storage,ID_COUNT, &(id + Uint128(1)))?;
-    // add this user order
-    let mut user_orders_map = PrefixedStorage::new(USER_ORDERS_MAP, &mut deps.storage);
-    let user_order_map:Option<UserOrderMap> = may_load(&user_orders_map, &user_address.as_slice())?;
-
-    if user_order_map == None {
-        save(&mut user_orders_map,&user_address.as_slice(), &(UserOrderMap {
-            active_order: Some(id),
-            history_orders: vec![]
-        }))?;
-    } else {
-        let new_user_order_map: UserOrderMap = UserOrderMap {
-            active_order: Some(id),
-            history_orders: user_order_map.unwrap().history_orders
-        };
-        save(&mut user_orders_map,&user_address.as_slice(), &new_user_order_map)?;
     }
 
     Ok(HandleResponse {
@@ -343,9 +318,11 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     amount: Uint128
 ) -> StdResult<HandleResponse>{
     // Get the swapped limit order and update balance
-    let order_id: Uint128 = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
-    let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
-    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &order_id.to_string().as_bytes()).unwrap();
+    let order_id: HumanAddr = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
+    let order_id_canonical = deps.api.canonical_address(&order_id)?;
+
+    let mut limit_orders_data = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &order_id_canonical.as_slice()).unwrap();
     
     let mut modify_limit_order = limit_order_data.clone().unwrap();
     modify_limit_order.status = "Filled".to_string();
@@ -361,7 +338,7 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
         ];
     }
     
-    save(&mut limit_orders_data, &order_id.to_string().as_bytes(), &modify_limit_order)?;
+    save(&mut limit_orders_data, &order_id_canonical.as_slice(), &modify_limit_order)?;
 
     //Remove order from queue
     if modify_limit_order.is_bid == true {
@@ -394,11 +371,9 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse>{
     // load limit order state of the user
     let user_address = &deps.api.canonical_address(&env.message.sender)?;
-    let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
-    let user_order_map: Option<UserOrderMap> = may_load(&user_orders_map, &user_address.as_slice())?;
 
-    let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
-    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &user_order_map.clone().unwrap().active_order.unwrap().to_string().as_bytes())?;
+    let limit_orders_data = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &user_address.as_slice())?;
     if limit_order_data == None {
         return Err(StdError::generic_err(format!(
             "No limit order found."
@@ -475,37 +450,20 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
     let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
     */
 
-    // update limit order
+    // Add modified limit order to this user history and remove it from active
     let mut updated_limit_order: LimitOrderState = limit_order_data.clone().unwrap();
     updated_limit_order.status = "Withdrew".to_string();
     updated_limit_order.withdrew_balance = Some(updated_limit_order.balances);
     updated_limit_order.balances = vec![Uint128(0),Uint128(0)];
-    let mut limit_orders_data = PrefixedStorage::new(LIMIT_ORDERS, &mut deps.storage);
-    save(&mut limit_orders_data, &user_order_map.clone().unwrap().active_order.unwrap().to_string().as_bytes(), &updated_limit_order)?;
 
-    // remove the order on the queue
-    /*if limit_order_data.clone().unwrap().is_bid == true {
-        let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        bid_order_book.remove(
-            user_address.clone()
-        );
-        save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
-    } else {
-        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
-        ask_order_book.remove(
-            user_address.clone()
-        );
-        save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
-    }*/
+    // Remove limit order from active
+    let mut active_limit_orders_data = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
+    remove(&mut active_limit_orders_data,user_address.as_slice());
 
-    // swap this order id for the filled ones on user order map
-    let mut user_orders_map = PrefixedStorage::new(USER_ORDERS_MAP, &mut deps.storage);
-    let user_order_map: Option<UserOrderMap> = may_load(&user_orders_map, &user_address.as_slice())?;
-
-    let mut new_user_order_map:UserOrderMap = user_order_map.clone().unwrap();
-    new_user_order_map.active_order = None;
-    new_user_order_map.history_orders.push(user_order_map.unwrap().active_order.unwrap());
-    save(&mut user_orders_map,&user_address.as_slice(), &new_user_order_map)?;
+    // Add Order to history
+    let mut history_limit_orders = PrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, user_address.as_slice()], &mut deps.storage);
+    let mut user_history_orders = AppendStoreMut::attach_or_create(&mut history_limit_orders)?;
+    user_history_orders.push(&updated_limit_order)?;
         
     // Response
     Ok(HandleResponse {
@@ -593,8 +551,9 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::OrderBookPairInfo {} => to_binary(&get_order_book_pair_info(deps)?),
-        QueryMsg::GetLimitOrders {user_address, user_viewkey, limit, offset} => to_binary(&get_limit_orders(deps, user_address, user_viewkey, limit, offset)?),
+        QueryMsg::OrderBookPairInfo {} => get_order_book_pair_info(deps),
+        QueryMsg::GetActiveLimitOrder {user_address, user_viewkey} => get_active_limit_order(deps, user_address, user_viewkey),
+        QueryMsg::GetHistoryLimitOrders {user_address, user_viewkey, page_size, page} => get_history_limit_orders(deps, user_address, user_viewkey, page_size, page),
         QueryMsg::CheckOrderBookTrigger {} => to_binary(&check_order_book_trigger(deps)?),
         _ => Err(StdError::generic_err("Handler not found!"))
     }
@@ -603,27 +562,58 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 
 fn get_order_book_pair_info<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
-) -> StdResult<OrderBookPairResponse> {
+) -> QueryResult {
     let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
     let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
     let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
     let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
 
-    let response:OrderBookPairResponse = OrderBookPairResponse {
+    to_binary(&QueryAnswer::OrderBookPair {
         amm_pair_address,
         assets_info: [token1_data,token2_data]
-    };
-
-    return Ok(response);
+    })
 }
 
-fn get_limit_orders<S: Storage, A: Api, Q: Querier>(
+fn get_active_limit_order<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    user_address: HumanAddr,
+    user_viewkey: String
+) -> QueryResult {
+    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
+    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
+    let factory_contract_hash: String = load(&factory_data, b"hash")?;
+    let factory_key: String = load(&factory_data, b"key")?;
+
+    let response: IsKeyValidResponse =
+    FactoryQueryMsg::IsKeyValid {
+        factory_key,
+        viewing_key: user_viewkey.clone(),
+        address: user_address.clone()
+    }.query(&deps.querier, factory_contract_hash, factory_contract_address)?;
+
+    if response.is_key_valid.is_valid {
+        let user_address_canonical = &deps.api.canonical_address(&user_address)?;
+
+        let limit_orders_data = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &deps.storage);
+        let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &user_address_canonical.as_slice())?;
+        
+        return to_binary(&QueryAnswer::ActiveLimitOrder {
+            active_limit_order: limit_order_data 
+        });
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Invalid address - viewkey pair!"
+        ))); 
+    }
+}
+
+fn get_history_limit_orders<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     user_address: HumanAddr,
     user_viewkey: String,
-    limit: Option<i32>,
-    offset: Option<i32>
-) -> StdResult<LimitOrdersQueryResponse> {
+    page_size: Option<u32>,
+    page: Option<u32>
+) -> QueryResult {
     let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
     let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
     let factory_contract_hash: String = load(&factory_data, b"hash")?;
@@ -638,37 +628,35 @@ fn get_limit_orders<S: Storage, A: Api, Q: Querier>(
 
     if response.is_key_valid.is_valid {
         let user_address = &deps.api.canonical_address(&user_address)?;
-        let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
-        let user_order_map: Option<UserOrderMap> = may_load(&user_orders_map, &user_address.as_slice())?;
-        let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+        let history_limit_orders = ReadonlyPrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, user_address.as_slice()], &deps.storage);
         
-        let mut response:LimitOrdersQueryResponse = LimitOrdersQueryResponse {
-            active_order: None,
-            history_orders: vec![]
+        let store = if let Some(result) = AppendStore::<LimitOrderState, _>::attach(&history_limit_orders) {
+            result?
+        } else {
+            return to_binary(&QueryAnswer::HistoryLimitOrders {
+                history_limit_orders: vec![]
+            });
         };
 
-        if user_order_map != None {
-            if user_order_map.clone().unwrap().active_order != None {
-                let limit_order_data:LimitOrderState = load(&limit_orders_data, &user_order_map.clone().unwrap().active_order.unwrap().to_string().as_bytes()).unwrap();
-                response.active_order = Some(limit_order_data);
-            }
+        let response:Vec<LimitOrderState>;
+        if page_size != None && page != None {
+            let tx_iter = store
+            .iter()
+            .skip((page.unwrap() * page_size.unwrap()) as _)
+            .take(page_size.unwrap() as _);
     
-            if user_order_map.clone().unwrap().history_orders.len() > 0 {
-                let mut pagination_limit: usize = user_order_map.clone().unwrap().history_orders.len() as usize;
-                let mut pagination_offset: usize = 0 as usize;
-
-                if offset != None && offset.unwrap() <= pagination_limit as i32 { pagination_offset = offset.unwrap() as usize};
-                if limit != None && limit.unwrap() <= pagination_limit as i32 { pagination_limit = limit.unwrap() as usize};
-
-                for i in pagination_offset..pagination_limit {
-                    let order_id = user_order_map.clone().unwrap().history_orders[i];
-                    let limit_order_data:LimitOrderState = load(&limit_orders_data, &order_id.to_string().as_bytes()).unwrap();
-                    response.history_orders.insert(0,limit_order_data);
-                }
-            }
+            let txs: StdResult<Vec<LimitOrderState>> = tx_iter.collect();
+            response = txs.unwrap()
+        } else {
+            let tx_iter = store.iter();
+            let txs: StdResult<Vec<LimitOrderState>> = tx_iter.collect();
+            response = txs.unwrap()
         }
-       
-        return Ok(response);
+    
+        return to_binary(&QueryAnswer::HistoryLimitOrders {
+            history_limit_orders: response
+        });
+
     } else {
         return Err(StdError::generic_err(format!(
             "Invalid address - viewkey pair!"
@@ -694,12 +682,12 @@ fn check_order_book_trigger<S: Storage, A: Api, Q: Querier>(
 pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     is_bid: bool
-) -> (Option<Uint128>, Option<LimitOrderState>) {
+) -> (Option<HumanAddr>, Option<LimitOrderState>) {
     let mut order_book: OrderQueue;
     let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
     let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
     let amm_pair_hash: String = load(&amm_pair_data, b"hash").unwrap();
-    let limit_orders_data = ReadonlyPrefixedStorage::new(LIMIT_ORDERS, &deps.storage);
+    let limit_orders_data = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &deps.storage);
     let token1_data:AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
     let token2_data:AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
 
@@ -717,6 +705,18 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         false => AmmAssetInfo::Token {
             contract_addr: token1_data.clone().token.unwrap().contract_addr,
             token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
+            viewing_key: "".to_string()
+        }
+    };
+
+    let asset2:AmmAssetInfo = 
+    match token2_data.is_native_token {
+        true => AmmAssetInfo::NativeToken {
+            denom: token2_data.native_token.unwrap().denom
+        },
+        false => AmmAssetInfo::Token {
+            contract_addr: token2_data.clone().token.unwrap().contract_addr,
+            token_code_hash: token2_data.clone().token.unwrap().token_code_hash,
             viewing_key: "".to_string()
         }
     };
@@ -745,31 +745,27 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
                 // Now we know that this order is a candidate to trigger but need to simulate again with his amount 
                 // Simulate offering N amount of Token1
                 // Getting => X Token2 per N Token1
-                let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &order_book_peek.id.to_string().as_bytes()).unwrap();
-                let amount: Uint128;
-                if is_bid {
-                    amount = limit_order_data.clone().unwrap().expected_amount;
-                } else {
-                    amount = limit_order_data.clone().unwrap().deposit_amount;
-                }
-                
-                let response_amm_order_simulation: AmmPairSimulationResponse =
-                AmmSimulationQuery::simulation {
-                    offer_asset: AmmSimulationOfferAsset{
-                        info: asset1.clone(),
-                        amount
-                    }
-                }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
-                
+                let order_book_id_canonical = &deps.api.canonical_address(&order_book_peek.id).unwrap();
+                let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, order_book_id_canonical.as_slice()).unwrap();
+                //let amount: Uint128 = limit_order_data.clone().unwrap().deposit_amount;
+                let simulated: Uint128;
+                let asset: AmmAssetInfo;
+
+                if is_bid { asset = asset2.clone()} 
+                else { asset = asset1.clone()} 
+
                 // Here we have the final simulation for this with slippage
                 // Check if deposited amount is <= simulated amount that comes from the swap
-                let would_trigger_total_amount: bool;
-                
-                if is_bid {
-                    would_trigger_total_amount = limit_order_data.clone().unwrap().deposit_amount >= response_amm_order_simulation.return_amount;
-                } else {
-                    would_trigger_total_amount = limit_order_data.clone().unwrap().expected_amount <= response_amm_order_simulation.return_amount;
-                }
+                let response_amm_order_simulation: AmmPairSimulationResponse =
+                    AmmSimulationQuery::simulation {
+                        offer_asset: AmmSimulationOfferAsset{
+                            info: asset.clone(),
+                            amount: limit_order_data.clone().unwrap().deposit_amount
+                        }
+                    }.query(&deps.querier, amm_pair_hash.clone(), amm_pair_address.clone()).unwrap();
+
+                simulated = response_amm_order_simulation.return_amount;
+                let would_trigger_total_amount = limit_order_data.clone().unwrap().expected_amount <= simulated;
                
                 if would_trigger_total_amount {
                     //This order is elligible for a trigger so return it
@@ -787,4 +783,4 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
     }
 
     return (None, None);
-}
+} 

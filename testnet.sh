@@ -30,7 +30,7 @@ order_vk="bRQ1eAVGhow65b/Sldnxg8MAacJxpVcz//xbFFSIZJk="
 #secretcli q compute query $order_factory_contract_address '{"secret_order_books":{}}'
 
 #Create Pair on order factory address
-secretcli tx compute execute $order_factory_contract_address '{"new_secret_order_book_instanciate": { "amm_pair_address": "'$amm_pair_address'", "amm_pair_hash": "'$amm_pair_hash'", "token1_fee": "0", "token2_fee": "0"}}' --from a -y --gas 1500000 -b block 
+#secretcli tx compute execute $order_factory_contract_address '{"new_secret_order_book_instanciate": { "amm_pair_address": "'$amm_pair_address'", "amm_pair_hash": "'$amm_pair_hash'", "token1_fee": "0", "token2_fee": "0"}}' --from a -y --gas 1500000 -b block 
 
 #Get address of Orderbook
 #orderbook_address=$(secretcli q compute query $order_factory_contract_address '{"secret_order_books": {"contract_address": "'$amm_pair_address'"}}' | jq -r .secret_order_books.secret_order_book.contract_addr)
@@ -62,7 +62,7 @@ secretcli tx compute execute $order_factory_contract_address '{"new_secret_order
 #secretcli tx compute execute $orderbook_address '{"trigger_limit_orders": {}}' --from a -y --gas 3000000 -b block
 
 
-#secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx","token_code_hash":"CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62","viewing_key":""}},"amount":"5000000"}}}' 
+secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx","token_code_hash":"CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62","viewing_key":""}},"amount":"15150000"}}}' 
 #secretcli q compute query $amm_pair_address '{"simulation":{"offer_asset":{"info":{"token":{"contract_addr":"secret1ttg5cn3mv5n9qv8r53stt6cjx8qft8ut9d66ed","token_code_hash":"2DA545EBC441BE05C9FA6338F3353F35AC02EC4B02454BC49B1A66F4B9866AED","viewing_key":""}},"amount":"1000000000000000000"}}}'
 
 # total swap amount => return_amount 

@@ -1,4 +1,4 @@
-use cosmwasm_std::{CanonicalAddr, Uint128};
+use cosmwasm_std::{CanonicalAddr, HumanAddr, Uint128};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering};
 use schemars::JsonSchema;
@@ -6,7 +6,7 @@ use std::collections::{BinaryHeap};
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct OrderIndex {
-    pub id: Uint128,
+    pub id: HumanAddr,
     pub price: Uint128,
     pub timestamp: u64,
     pub is_bid: bool,
@@ -65,7 +65,7 @@ impl OrderQueue {
         }
     }
 
-    pub fn insert(&mut self, id: Uint128, price: Uint128, timestamp:u64 ) -> bool {
+    pub fn insert(&mut self, id: HumanAddr, price: Uint128, timestamp:u64 ) -> bool {
         self.idx_queue.as_mut().unwrap().push(OrderIndex {
             id,
             price,
@@ -83,7 +83,7 @@ impl OrderQueue {
         self.idx_queue.as_mut().unwrap().pop()
     }
 
-    pub fn remove(&mut self, id: Uint128) {
+    pub fn remove(&mut self, id: HumanAddr) {
         if let Some(idx_queue) = self.idx_queue.take() {
             let mut active_orders = idx_queue.into_vec();
             active_orders.retain(|order_id| id != order_id.id);

@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{CanonicalAddr, Binary, Coin, Decimal, Extern, HumanAddr, Querier, QuerierResult, QueryRequest, StdResult, Uint128, WasmQuery, from_binary, testing::*, to_vec};
-    use crate::{contract::{USER_ORDERS_MAP, BID_ORDER_QUEUE, SWAPPED_LIMIT_ORDER, FACTORY_DATA, LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{OrderBookPairResponse, AmmAssetInfo, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, save, may_load}};
+    use secret_toolkit::storage::AppendStore;
+    use crate::{contract::{BID_ORDER_QUEUE, SWAPPED_LIMIT_ORDER, FACTORY_DATA, ACTIVE_LIMIT_ORDERS, HISTORY_LIMIT_ORDERS, TOKEN1_DATA, TOKEN2_DATA, handle}, msg::{QueryAnswer, AssetInfo, HandleMsg, NativeToken, QueryMsg, Token}, state::{load, save, may_load}};
     use crate::contract::{init};
     use crate::order_queues::OrderQueue;
     use cosmwasm_std::{Api, InitResponse, to_binary};
@@ -197,11 +198,10 @@ mod tests {
         // Check Bob limit order
         let user_address_bob = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
 
-        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &Uint128(0).to_string().as_bytes()).unwrap();
+        let limit_orders = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_bob.as_slice()).unwrap();
 
         assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
-        assert_eq!(load_limit_order.clone().unwrap().creator, HumanAddr("bob".to_string()));
         assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(4000000000000000000));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(4000000000000000000)]);
@@ -209,21 +209,20 @@ mod tests {
         // Check Alice limit order
         let user_address_alice = &deps.api.canonical_address(&HumanAddr("alice".to_string())).unwrap();
 
-        let limit_orders = ReadonlyPrefixedStorage::new(LIMIT_ORDERS,&deps.storage);
-        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &Uint128(1).to_string().as_bytes()).unwrap();
+        let limit_orders = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
 
         assert_eq!(load_limit_order.clone().unwrap().is_bid, true);
-        assert_eq!(load_limit_order.clone().unwrap().creator, HumanAddr("alice".to_string()));
         assert_eq!(load_limit_order.clone().unwrap().status, "Active".to_string());
         assert_eq!(load_limit_order.clone().unwrap().price, Uint128(5000000000000000000));
         assert_eq!(load_limit_order.clone().unwrap().balances, vec![Uint128(0),Uint128(5000000000000000000)]);
 
         // Check order queue
         let mut bid_order_book:OrderQueue=load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        assert_eq!(bid_order_book.peek().unwrap().id, Uint128(1));
+        assert_eq!(bid_order_book.peek().unwrap().id, HumanAddr("alice".to_string()));
         assert_eq!(bid_order_book.peek().unwrap().price, Uint128(5000000000000000000));
-        assert_eq!(bid_order_book.pop().unwrap().id, Uint128(1));
-        assert_eq!(bid_order_book.pop().unwrap().id, Uint128(0));
+        assert_eq!(bid_order_book.pop().unwrap().id, HumanAddr("alice".to_string()));
+        assert_eq!(bid_order_book.pop().unwrap().id, HumanAddr("bob".to_string()));
         assert_eq!(bid_order_book.peek(), None);
         assert_eq!(bid_order_book.pop(), None);
 
@@ -245,6 +244,10 @@ mod tests {
             "handle() failed: {}",
             handle_result.err().unwrap()
         ); 
+
+        let limit_orders = ReadonlyPrefixedStorage::new(ACTIVE_LIMIT_ORDERS,&deps.storage);
+        let load_limit_order: Option<LimitOrderState> = may_load(&limit_orders, &user_address_alice.as_slice()).unwrap();
+        assert_eq!(load_limit_order, None);
 
         // add again
         // Alice send
@@ -268,15 +271,15 @@ mod tests {
         ); 
 
         let mut bid_order_book:OrderQueue=load(&deps.storage, BID_ORDER_QUEUE).unwrap();
-        assert_eq!(bid_order_book.peek().unwrap().id, Uint128(2));
+        assert_eq!(bid_order_book.peek().unwrap().id, HumanAddr("alice".to_string()));
 
         //check limit orders
-        let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
-        let user_order_map: UserOrderMap = load(&user_orders_map, &user_address_alice.as_slice()).unwrap();
-
-        assert_eq!(user_order_map.active_order, Some(Uint128(2)));
-        assert_eq!(user_order_map.history_orders[0], Uint128(1));
-        assert_eq!(user_order_map.history_orders.len(), 1);
+        let history_limit_orders = ReadonlyPrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, user_address_alice.as_slice()], &deps.storage);
+        let store = AppendStore::<LimitOrderState, _>::attach(&history_limit_orders);
+        let tx_iter = store.unwrap().unwrap().iter();
+        let txs: StdResult<Vec<LimitOrderState>> = tx_iter.collect();
+        
+        assert_eq!(txs.unwrap().len(), 1);
 
         //widthdraw again
         let handle_msg = HandleMsg::WithdrawLimitOrder {};
@@ -289,13 +292,12 @@ mod tests {
         ); 
 
         //check limit orders
-        let user_orders_map = ReadonlyPrefixedStorage::new(USER_ORDERS_MAP, &deps.storage);
-        let user_order_map: UserOrderMap = load(&user_orders_map, &user_address_alice.as_slice()).unwrap();
+        let history_limit_orders = ReadonlyPrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, user_address_alice.as_slice()], &deps.storage);
+        let store = AppendStore::<LimitOrderState, _>::attach(&history_limit_orders);
+        let tx_iter = store.unwrap().unwrap().iter();
+        let txs: StdResult<Vec<LimitOrderState>> = tx_iter.collect();
 
-        assert_eq!(user_order_map.active_order, None);
-        assert_eq!(user_order_map.history_orders[0], Uint128(1));
-        assert_eq!(user_order_map.history_orders[1], Uint128(2));
-        assert_eq!(user_order_map.history_orders.len(), 2);
+        assert_eq!(txs.unwrap().len(), 2);
     }
 
     /*#[test]
@@ -1069,7 +1071,9 @@ mod tests {
             msg: None
         };
 
-        let order_id: Uint128 = Uint128(0);
+        let user_address_bob = &deps.api.canonical_address(&HumanAddr("bob".to_string())).unwrap();
+
+        let order_id: HumanAddr = HumanAddr("bob".to_string());
         save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id);
 
         let handle_result = handle(&mut deps, mock_env("token2address", &[]), handle_msg.clone());
@@ -1124,33 +1128,38 @@ mod tests {
         let query_msg = QueryMsg::OrderBookPairInfo {};
         let query_result = query(&deps, query_msg);
 
-        let result:OrderBookPairResponse = from_binary(&query_result.unwrap()).unwrap();
-        assert_eq!(result.amm_pair_address, HumanAddr("ammpairaddress".to_string()));
-        assert_eq!(result.assets_info[0],AssetInfo {
-            is_native_token: false,
-            decimal_places: 6,
-            base_amount: Uint128(1000000),
-            fee_amount: Uint128(500000),
-            token: Some(
-                Token {
-                    contract_addr: HumanAddr("token1address".to_string()),
-                    token_code_hash: "token1hash".to_string()
-                }
-            ),
-            native_token: None
-        });
-        assert_eq!(result.assets_info[1],AssetInfo {
-            is_native_token: false,
-                decimal_places: 18,
-                base_amount: Uint128(1000000000000000000),
-                fee_amount: Uint128(500000000000000000),
-                token: Some(
-                    Token {
-                        contract_addr: HumanAddr("token2address".to_string()),
-                        token_code_hash: "token2hash".to_string()
-                    }
-                ),
-                native_token: None
-        });
+        let result:QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match result {
+            QueryAnswer::OrderBookPair {amm_pair_address, assets_info} => {
+                assert_eq!(amm_pair_address, HumanAddr("ammpairaddress".to_string()));
+                assert_eq!(assets_info[0],AssetInfo {
+                    is_native_token: false,
+                    decimal_places: 6,
+                    base_amount: Uint128(1000000),
+                    fee_amount: Uint128(500000),
+                    token: Some(
+                        Token {
+                            contract_addr: HumanAddr("token1address".to_string()),
+                            token_code_hash: "token1hash".to_string()
+                        }
+                    ),
+                    native_token: None
+                });
+                assert_eq!(assets_info[1],AssetInfo {
+                    is_native_token: false,
+                        decimal_places: 18,
+                        base_amount: Uint128(1000000000000000000),
+                        fee_amount: Uint128(500000000000000000),
+                        token: Some(
+                            Token {
+                                contract_addr: HumanAddr("token2address".to_string()),
+                                token_code_hash: "token2hash".to_string()
+                            }
+                        ),
+                        native_token: None
+                });
+            },
+            _ => assert_eq!(true,false)
+        }
     }
 }

@@ -111,11 +111,15 @@ pub enum ResponseStatus {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetLimitOrders {
+    GetActiveLimitOrder {
+        user_address: HumanAddr,
+        user_viewkey: String
+    },
+    GetHistoryLimitOrders {
         user_address: HumanAddr,
         user_viewkey: String,
-        limit: Option<i32>,
-        offset: Option<i32>
+        page_size: Option<u32>,
+        page: Option<u32>
     },
     CheckOrderBookTrigger {},
     OrderBookPairInfo {}
@@ -124,8 +128,18 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
-    LimitOrders {}
+    ActiveLimitOrder {
+        active_limit_order: Option<LimitOrderState>
+    },
+    HistoryLimitOrders {
+        history_limit_orders: Vec<LimitOrderState>
+    },
+    OrderBookPair {
+        amm_pair_address: HumanAddr,
+        assets_info: [AssetInfo;2]
+    }
 }
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct IsKeyValidResponse {
     pub is_key_valid: IsKeyValid  
@@ -205,16 +219,17 @@ pub struct AmmPairSimulationResponse {
     pub spread_amount: Uint128,
     pub commission_amount: Uint128
 }
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct OrderBookPairResponse {
-    pub amm_pair_address: HumanAddr,
-    pub assets_info: [AssetInfo;2]
+pub struct AmmPairReverseSimulationResponse {
+    pub offer_amount: Uint128,
+    pub spread_amount: Uint128,
+    pub commission_amount: Uint128
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct LimitOrdersQueryResponse {
-    pub active_order: Option<LimitOrderState>,
-    pub history_orders: Vec<LimitOrderState>
+pub struct ActiveLimitOrderQueryResponse {
+    pub active_limit_order: Option<LimitOrderState>
 }
 
 // State
@@ -226,7 +241,6 @@ pub struct UserOrderMap {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LimitOrderState {
-    pub creator: HumanAddr,
     pub is_bid: bool,
     pub status: String, //Active, PartiallyFilled, Filled
     pub price: Uint128,

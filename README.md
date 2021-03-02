@@ -3,9 +3,13 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-** TODO: Implement the fee logic after the swap (trigger of a limit order)
-** TODO: Implement new method of storing the old limit orders
-** TODO: Admin can change the fees for an asset
+* TODO: Implement new method of storing the old limit orders
+	* Update WWW with new queries
+* TODO: Withdraw directamente para o user
+* TODO: Implement the fee logic after the swap (trigger of a limit order)
+* TODO: Delete User Orderbooks because to change the fees it will be hard and is adding gas cost!
+* TODO: Admin can change the fees for an asset
+* TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries
 
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
