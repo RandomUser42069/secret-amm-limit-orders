@@ -57,6 +57,12 @@ function App() {
             symbol: "sETH"
           }
         },{
+          dst_address: "secret10zr3azpmr42vatq3pey2aaxurug0c668km6rzl",
+          decimals: 18,
+          display_props: {
+            symbol: "sOCEAN"
+          }
+        },{
           dst_address: SSCRT_CONTRACT_ADDRESS,
           decimals: 6,
           display_props: {

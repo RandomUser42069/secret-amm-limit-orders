@@ -3,8 +3,6 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* TODO: Implement new method of storing the old limit orders
-	* Update WWW with new queries
 * TODO: Withdraw directamente para o user
 * TODO: Implement the fee logic after the swap (trigger of a limit order)
 * TODO: Delete User Orderbooks because to change the fees it will be hard and is adding gas cost!
