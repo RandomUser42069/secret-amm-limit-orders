@@ -97,7 +97,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::Receive { sender, from, amount, msg } => try_receive(deps, env, sender, from, amount, msg),
         // Receiver to CreateLimitOrder from SCRT
         //HandleMsg::ReceiveNativeToken {is_bid, price} => try_receive_native_token(deps, env, is_bid, price),
-        HandleMsg::WithdrawLimitOrder {} => try_withdraw_limit_order(deps, env), 
+        HandleMsg::CancelLimitOrder {} => try_cancel_limit_order(deps, env), 
         HandleMsg::TriggerLimitOrders {} => try_trigger_limit_orders(deps, env), 
         _ => Err(StdError::generic_err("Handler not found!"))
     } 
@@ -146,21 +146,6 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
     }
     
 }
-
-/*pub fn try_receive_native_token<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    is_bid:bool,
-    price: Uint128
-) -> StdResult<HandleResponse> { 
-    let (order_token_index,balances,order_token_init_quant) = prepare_create_limit_order(deps,env.clone(),true, env.clone().message.sent_funds[0].amount);
-    if order_token_index == None {
-        return Err(StdError::generic_err(format!(
-            "Invalid Token or Amount Sent"
-        )));
-    }
-    return create_limit_order(deps, env.clone(), balances, order_token_index.unwrap(), order_token_init_quant, env.clone().message.sender, is_bid, price)
-}*/
 
 fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -317,46 +302,85 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     env: Env,
     amount: Uint128
 ) -> StdResult<HandleResponse>{
-    // Get the swapped limit order and update balance
     let order_id: HumanAddr = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
     let order_id_canonical = deps.api.canonical_address(&order_id)?;
+    let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+    let token2_info: AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
 
-    let mut limit_orders_data = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
-    let limit_order_data: Option<LimitOrderState> = may_load(&limit_orders_data, &order_id_canonical.as_slice()).unwrap();
+    let mut active_limit_orders_data = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
+    let limit_order_data: Option<LimitOrderState> = may_load(&active_limit_orders_data, &order_id_canonical.as_slice()).unwrap();
+    if limit_order_data == None {
+        return Err(StdError::generic_err(format!(
+            "No limit order found."
+        ))); 
+    }
+
+    // Calculate Fees and separate the amount the user needs to receive from the fees
+    let user_amount: Uint128 = amount;
     
+    // Transfer the amount received to the user
+    let token_contract_address: HumanAddr;
+    let token_contract_hash: String;
+
+    if limit_order_data.clone().unwrap().is_bid {
+        token_contract_address = token1_info.token.clone().unwrap().contract_addr;
+        token_contract_hash = token1_info.token.clone().unwrap().token_code_hash;
+    } else {
+        token_contract_address = token2_info.token.clone().unwrap().contract_addr;
+        token_contract_hash = token2_info.token.clone().unwrap().token_code_hash;
+    }
+
+    let mut transfer_result: CosmosMsg = transfer_msg(
+        order_id.clone(),
+        user_amount,
+        None,
+        BLOCK_SIZE,
+        token_contract_hash,
+        token_contract_address
+    ).unwrap();
+
+    // Get limit order from active and modify
     let mut modify_limit_order = limit_order_data.clone().unwrap();
     modify_limit_order.status = "Filled".to_string();
+    modify_limit_order.balances = vec![Uint128(0),Uint128(0)];
     if modify_limit_order.is_bid == true {
-        modify_limit_order.balances = vec![
+        modify_limit_order.withdrew_balance = Some(vec![
             amount,
             Uint128(0)
-        ];
+        ]);
     } else {
-        modify_limit_order.balances = vec![
+        modify_limit_order.withdrew_balance = Some(vec![
             Uint128(0),
             amount
-        ];
+        ]);
     }
-    
-    save(&mut limit_orders_data, &order_id_canonical.as_slice(), &modify_limit_order)?;
 
-    //Remove order from queue
+    // Remove from active limit order and queue
+    remove(&mut active_limit_orders_data,&order_id_canonical.as_slice());
+
     if modify_limit_order.is_bid == true {
-        let mut bid_order_book:OrderQueue = load(&deps.storage, BID_ORDER_QUEUE).unwrap();
+        let mut bid_order_book:OrderQueue = load(&mut deps.storage, BID_ORDER_QUEUE).unwrap();
         bid_order_book.remove(
             order_id.clone()
         );
         save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
     } else {
-        let mut ask_order_book:OrderQueue = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
+        let mut ask_order_book:OrderQueue = load(&mut deps.storage, ASK_ORDER_QUEUE).unwrap();
         ask_order_book.remove(
             order_id.clone()
         );
         save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
     }
-    
+
+    // Add to History Limit Orders
+    let mut history_limit_orders = PrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, &order_id_canonical.as_slice()], &mut deps.storage);
+    let mut user_history_orders = AppendStoreMut::attach_or_create(&mut history_limit_orders)?;
+    user_history_orders.push(&modify_limit_order)?;
+        
     Ok(HandleResponse {
-        messages: vec![],
+        messages: vec![
+            transfer_result
+        ],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Status {
             status: ResponseStatus::Success,
@@ -365,7 +389,7 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
+pub fn try_cancel_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env
 ) -> StdResult<HandleResponse>{
@@ -452,13 +476,28 @@ pub fn try_withdraw_limit_order<S: Storage, A: Api, Q: Querier>(
 
     // Add modified limit order to this user history and remove it from active
     let mut updated_limit_order: LimitOrderState = limit_order_data.clone().unwrap();
-    updated_limit_order.status = "Withdrew".to_string();
+    updated_limit_order.status = "Canceled".to_string();
     updated_limit_order.withdrew_balance = Some(updated_limit_order.balances);
     updated_limit_order.balances = vec![Uint128(0),Uint128(0)];
 
     // Remove limit order from active
     let mut active_limit_orders_data = PrefixedStorage::new(ACTIVE_LIMIT_ORDERS, &mut deps.storage);
     remove(&mut active_limit_orders_data,user_address.as_slice());
+
+    // Remove from queue
+    if updated_limit_order.is_bid == true {
+        let mut bid_order_book:OrderQueue = load(&mut deps.storage, BID_ORDER_QUEUE).unwrap();
+        bid_order_book.remove(
+            env.message.sender
+        );
+        save(&mut deps.storage, BID_ORDER_QUEUE, &bid_order_book)?;
+    } else {
+        let mut ask_order_book:OrderQueue = load(&mut deps.storage, ASK_ORDER_QUEUE).unwrap();
+        ask_order_book.remove(
+            env.message.sender
+        );
+        save(&mut deps.storage, ASK_ORDER_QUEUE, &ask_order_book)?;
+    }
 
     // Add Order to history
     let mut history_limit_orders = PrefixedStorage::multilevel(&[HISTORY_LIMIT_ORDERS, user_address.as_slice()], &mut deps.storage);

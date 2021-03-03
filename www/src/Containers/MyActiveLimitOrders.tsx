@@ -39,7 +39,7 @@ export default ({
                         <th>Limit Order</th>
                         <th>Triggered Price</th>
                         <th>Current Price</th>
-                        <th>Withdraw</th>
+                        <th>Cancel</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -215,7 +215,7 @@ const MyLimitOrder = ({
                         {activelimitOrderData && <td>{<Button onClick={ async () => {
                             try{
                                 await client.execute.execute(orderBookAddress, { 
-                                    withdraw_limit_order: {}
+                                    cancel_limit_order: {}
                                 })
                                 let update = {...myLimitOrders}
                                 let arr = update.user_secret_order_books.user_secret_order_book.filter((address: string) => address !== orderBookAddress)

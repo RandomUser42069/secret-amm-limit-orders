@@ -10,7 +10,7 @@ import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret1q8rweswapxny72l3xmxwel55gvtz4xrcx0ursk" 
+const ORDERS_FACTORY_ADDRESS="secret10dls0d070dmjksypfp3d4q3xe4c6jnknyy522g" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {

@@ -4,11 +4,13 @@
 
 TODO:
 * TODO: Withdraw directamente para o user
+	* Error: Not receiving the amount of the token swapped!
+* TODO: Delete everything that relates to native tokens!
 * TODO: Implement the fee logic after the swap (trigger of a limit order)
 * TODO: Delete User Orderbooks because to change the fees it will be hard and is adding gas cost!
 * TODO: Admin can change the fees for an asset
 * TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries
-
+* TODO: OrderTriggererScript to verifiy multiple pairs at the same time (Nodejs backend?)
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * This fee is transfered to the triggerer account when the swap message is received (Fee in Buy Token or Sell Token?)

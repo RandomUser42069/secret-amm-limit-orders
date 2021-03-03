@@ -236,7 +236,7 @@ mod tests {
         let result:OrderBookPairResponse = from_binary(&query_result.unwrap()).unwrap();
         */
         // withdraw
-        let handle_msg = HandleMsg::WithdrawLimitOrder {};
+        let handle_msg = HandleMsg::CancelLimitOrder {};
 
         let handle_result = handle(&mut deps, mock_env("alice", &[]), handle_msg.clone());
         assert!(
@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(txs.unwrap().len(), 1);
 
         //widthdraw again
-        let handle_msg = HandleMsg::WithdrawLimitOrder {};
+        let handle_msg = HandleMsg::CancelLimitOrder {};
 
         let handle_result = handle(&mut deps, mock_env("alice", &[]), handle_msg.clone());
         assert!(

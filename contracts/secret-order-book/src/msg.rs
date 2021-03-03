@@ -84,7 +84,7 @@ pub enum HandleMsg {
         price: Uint128,
         expected_amount: Uint128
     },
-    WithdrawLimitOrder {},
+    CancelLimitOrder {},
     TriggerLimitOrders {}
 }
 
