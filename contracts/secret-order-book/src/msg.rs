@@ -56,15 +56,7 @@ pub enum FactoryHandleMsg {
         amm_pair_address: HumanAddr,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
-    },
-    AddOrderBookToUser {
-        amm_pair_address: HumanAddr, 
-        user_address: HumanAddr
-    },
-    RemoveOrderBookFromUser {
-        amm_pair_address: HumanAddr, 
-        user_address: HumanAddr
-    },
+    }
 }
 
 impl HandleCallback for FactoryHandleMsg {
@@ -75,10 +67,6 @@ impl HandleCallback for FactoryHandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     Receive{ sender: HumanAddr, from: HumanAddr, amount: Uint128, msg: Option<Binary> },
-    ReceiveNativeToken {
-        is_bid: bool,
-        price: Uint128
-    },
     CreateLimitOrder {
         is_bid: bool,
         price: Uint128,
@@ -255,12 +243,10 @@ pub struct LimitOrderState {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct AssetInfo {
-    pub is_native_token: bool,
     pub decimal_places: u8,
     pub base_amount: Uint128,
     pub fee_amount: Uint128,
-    pub token: Option<Token>,
-    pub native_token: Option<NativeToken>
+    pub token: Option<Token>
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

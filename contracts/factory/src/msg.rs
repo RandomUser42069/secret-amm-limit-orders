@@ -46,15 +46,7 @@ pub enum HandleMsg {
         amm_pairs_address: Vec<HumanAddr>,
         asset_contract_address: HumanAddr,
         new_asset_fee: Uint128
-    },
-    AddOrderBookToUser {
-        amm_pair_address: HumanAddr,
-        user_address: HumanAddr
-    },
-    RemoveOrderBookFromUser {
-        amm_pair_address: HumanAddr,
-        user_address: HumanAddr
-    },
+    }
 }
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -98,10 +90,6 @@ pub enum QueryMsg {
     SecretOrderBooks {
         page_size: Option<u32>,
         page: Option<u32>
-    },
-    UserSecretOrderBooks {
-        address: HumanAddr,
-        viewing_key: String, 
     }
 }
 
@@ -115,7 +103,6 @@ pub enum QueryAnswer {
     SecretOrderBookContractCodeID {code_id: u64, code_hash: String},
     SecretOrderBooks {secret_order_books: Vec<SecretOrderBookContract>},
     SecretOrderBook {secret_order_book: Option<SecretOrderBookContract>},
-    UserSecretOrderBooks {user_secret_order_book: Option<Vec<HumanAddr>>},
     Error {},
 }
 
@@ -130,12 +117,10 @@ pub struct SecretOrderBookContract {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct AssetInfo {
-    pub is_native_token: bool,
     pub decimal_places: u8,
     pub base_amount: Uint128,
     pub fee_amount: Uint128,
-    pub token: Option<Token>,
-    pub native_token: Option<NativeToken>
+    pub token: Option<Token>
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

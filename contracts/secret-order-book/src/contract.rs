@@ -42,29 +42,25 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut token2_response: Option<CosmosMsg> = None;
 
     // NO NATIVE TOKENS FOR NOW
-    if msg.token1_info.clone().is_native_token || msg.token2_info.clone().is_native_token {
+    if msg.token1_info.clone().token == None || msg.token2_info.clone().token == None {
         return Err(StdError::generic_err(
             "Native token not supported for now...",
         ));
     }
 
-    if !msg.token1_info.clone().is_native_token {
-        token1_response = Some(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: msg.token1_info.token.clone().unwrap().contract_addr,
-            callback_code_hash: msg.token1_info.token.clone().unwrap().token_code_hash,
-            msg: snip20_register_msg.clone(),
-            send: vec![],
-        }));
-    }
+    token1_response = Some(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: msg.token1_info.token.clone().unwrap().contract_addr,
+        callback_code_hash: msg.token1_info.token.clone().unwrap().token_code_hash,
+        msg: snip20_register_msg.clone(),
+        send: vec![],
+    }));
 
-    if !msg.token2_info.clone().is_native_token {
-        token2_response = Some(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: msg.token2_info.token.clone().unwrap().contract_addr,
-            callback_code_hash: msg.token2_info.token.clone().unwrap().token_code_hash,
-            msg: snip20_register_msg.clone(),
-            send: vec![],
-        }));
-    }
+    token2_response = Some(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: msg.token2_info.token.clone().unwrap().contract_addr,
+        callback_code_hash: msg.token2_info.token.clone().unwrap().token_code_hash,
+        msg: snip20_register_msg.clone(),
+        send: vec![],
+    }));
     
     // send callback to factory
     let callback_msg = FactoryHandleMsg::InitCallBackFromSecretOrderBookToFactory {
@@ -96,7 +92,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         // Receiver to CreateLimitOrder from SNIP20
         HandleMsg::Receive { sender, from, amount, msg } => try_receive(deps, env, sender, from, amount, msg),
         // Receiver to CreateLimitOrder from SCRT
-        //HandleMsg::ReceiveNativeToken {is_bid, price} => try_receive_native_token(deps, env, is_bid, price),
         HandleMsg::CancelLimitOrder {} => try_cancel_limit_order(deps, env), 
         HandleMsg::TriggerLimitOrders {} => try_trigger_limit_orders(deps, env), 
         _ => Err(StdError::generic_err("Handler not found!"))
@@ -121,7 +116,7 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
         }
     
         if let HandleMsg::CreateLimitOrder {is_bid, price, expected_amount} = msg.clone() {
-            let (deposit_token_index,balances,deposit_amount) = prepare_create_limit_order(deps,env.clone(),false,amount);
+            let (deposit_token_index,balances,deposit_amount) = prepare_create_limit_order(deps,env.clone(),amount);
             if deposit_token_index == None {
                 return Err(StdError::generic_err(format!(
                     "Invalid Token or Amount Sent < Minimum Amount"
@@ -150,7 +145,6 @@ pub fn try_receive<S: Storage, A: Api, Q: Querier>(
 fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    is_native_token: bool,
     amount:Uint128
 ) -> (
     Option<i8>,
@@ -164,34 +158,14 @@ fn prepare_create_limit_order<S: Storage, A: Api, Q: Querier>(
     let mut balances = vec![Uint128(0), Uint128(0)];
     let deposit_amount: Uint128 = amount;
 
-    match token1_info.is_native_token {
-        true => {
-            if is_native_token{
-                balances[0] = amount;
-                deposit_token_index = Some(0);
-            }
-        },
-        false => {
-            if !is_native_token && token1_info.token.unwrap().contract_addr == env.message.sender{
-                balances[0] = amount;
-                deposit_token_index = Some(0);
-            }
-        }
-    }
+    if token1_info.token.unwrap().contract_addr == env.message.sender {
+        balances[0] = amount;
+        deposit_token_index = Some(0);
+    };
 
-    match token2_info.is_native_token {
-        true => {
-            if is_native_token {
-                balances[1] = amount;
-                deposit_token_index = Some(1);
-            }
-        },
-        false => {
-            if !is_native_token && token2_info.token.unwrap().contract_addr == env.message.sender {
-                balances[1] = amount;
-                deposit_token_index = Some(1);
-            }
-        }
+    if token2_info.token.unwrap().contract_addr == env.message.sender {
+        balances[1] = amount;
+        deposit_token_index = Some(1);
     }
 
     return (deposit_token_index,balances,deposit_amount);
@@ -236,20 +210,6 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         ))); 
     }
 
-    // Add this order book to this user on the factory
-    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
-    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
-    let factory_contract_hash: String = load(&factory_data, b"hash")?;
-    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
-    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
-
-    let msg = FactoryHandleMsg::AddOrderBookToUser {
-        user_address: from.clone(),
-        amm_pair_address,
-    };
-
-    let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
-
     //Create Limit order
     let limit_order = LimitOrderState {
         is_bid,
@@ -286,9 +246,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     }
 
     Ok(HandleResponse {
-        messages: vec![
-            factory_response
-        ],
+        messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Status {
             status: ResponseStatus::Success,
@@ -409,70 +367,29 @@ pub fn try_cancel_limit_order<S: Storage, A: Api, Q: Querier>(
     // send transfer from this contract to the token contract
     if limit_order_data.clone().unwrap().balances[0] > Uint128(0) {
         let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
-        match token1_info.is_native_token {
-            true => {
-                transfer_result = CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address.clone(),
-                    to_address: env.message.sender.clone(),
-                    amount: vec![Coin {
-                        denom: token1_info.native_token.unwrap().denom,
-                        amount: limit_order_data.clone().unwrap().balances[0],
-                    }],
-                });
-            }
-            false => {
-                transfer_result = transfer_msg(
-                    env.message.sender.clone(),
-                    limit_order_data.clone().unwrap().balances[0],
-                    None,
-                    BLOCK_SIZE,
-                    token1_info.token.clone().unwrap().token_code_hash,
-                    token1_info.token.clone().unwrap().contract_addr
-                ).unwrap();
-            }
-        }        
+        
+        transfer_result = transfer_msg(
+            env.message.sender.clone(),
+            limit_order_data.clone().unwrap().balances[0],
+            None,
+            BLOCK_SIZE,
+            token1_info.token.clone().unwrap().token_code_hash,
+            token1_info.token.clone().unwrap().contract_addr
+        ).unwrap();       
     }
 
     if limit_order_data.clone().unwrap().balances[1] > Uint128(0) {
         let token2_info: AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
-        match token2_info.is_native_token {
-            true => {
-                transfer_result = CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address.clone(),
-                    to_address: env.message.sender.clone(),
-                    amount: vec![Coin {
-                        denom: token2_info.native_token.unwrap().denom,
-                        amount: limit_order_data.clone().unwrap().balances[1],
-                    }],
-                });
-            }
-            false => {
-                transfer_result = transfer_msg(
-                    env.message.sender.clone(),
-                    limit_order_data.clone().unwrap().balances[1],
-                    None,
-                    BLOCK_SIZE,
-                    token2_info.token.clone().unwrap().token_code_hash,
-                    token2_info.token.clone().unwrap().contract_addr
-                ).unwrap();
-            }
-        }      
+        
+        transfer_result = transfer_msg(
+            env.message.sender.clone(),
+            limit_order_data.clone().unwrap().balances[1],
+            None,
+            BLOCK_SIZE,
+            token2_info.token.clone().unwrap().token_code_hash,
+            token2_info.token.clone().unwrap().contract_addr
+        ).unwrap();
     }
-
-    // Remove this order book to this user on the factory
-    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
-    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
-    let factory_contract_hash: String = load(&factory_data, b"hash")?;
-    let amm_pair_data = ReadonlyPrefixedStorage::new(AMM_PAIR_DATA, &deps.storage);
-    let amm_pair_address: HumanAddr = load(&amm_pair_data, b"address").unwrap();
-
-    /*let msg = FactoryHandleMsg::RemoveOrderBookFromUser {
-        user_address: env.message.sender,
-        amm_pair_address,
-    };
-
-    let factory_response = msg.to_cosmos_msg(factory_contract_hash.clone(), factory_contract_address.clone(), None)?;
-    */
 
     // Add modified limit order to this user history and remove it from active
     let mut updated_limit_order: LimitOrderState = limit_order_data.clone().unwrap();
@@ -736,28 +653,16 @@ pub fn get_limit_order_to_trigger<S: Storage, A: Api, Q: Querier>(
         order_book = load(&deps.storage, ASK_ORDER_QUEUE).unwrap();
     }
     
-    let asset1:AmmAssetInfo = 
-    match token1_data.is_native_token {
-        true => AmmAssetInfo::NativeToken {
-            denom: token1_data.native_token.unwrap().denom
-        },
-        false => AmmAssetInfo::Token {
-            contract_addr: token1_data.clone().token.unwrap().contract_addr,
-            token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
-            viewing_key: "".to_string()
-        }
+    let asset1:AmmAssetInfo = AmmAssetInfo::Token {
+        contract_addr: token1_data.clone().token.unwrap().contract_addr,
+        token_code_hash: token1_data.clone().token.unwrap().token_code_hash,
+        viewing_key: "".to_string()
     };
 
-    let asset2:AmmAssetInfo = 
-    match token2_data.is_native_token {
-        true => AmmAssetInfo::NativeToken {
-            denom: token2_data.native_token.unwrap().denom
-        },
-        false => AmmAssetInfo::Token {
-            contract_addr: token2_data.clone().token.unwrap().contract_addr,
-            token_code_hash: token2_data.clone().token.unwrap().token_code_hash,
-            viewing_key: "".to_string()
-        }
+    let asset2:AmmAssetInfo = AmmAssetInfo::Token {
+        contract_addr: token2_data.clone().token.unwrap().contract_addr,
+        token_code_hash: token2_data.clone().token.unwrap().token_code_hash,
+        viewing_key: "".to_string()
     };
 
     // Simulate offering Token 1 with base unit of 1

@@ -121,7 +121,6 @@ mod tests {
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -131,10 +130,8 @@ mod tests {
                         token_code_hash: "token1hash".to_string()
                     }
                 ),
-                native_token: None
             },
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -144,7 +141,6 @@ mod tests {
                         token_code_hash: "token2hash".to_string()
                     }
                 ),
-                native_token: None
             },
             HumanAddr("ammpairaddress".to_string()),
             "ammpairhash".to_string()
@@ -427,7 +423,6 @@ mod tests {
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
@@ -437,10 +432,8 @@ mod tests {
                         token_code_hash: "token1hash".to_string()
                     }
                 ),
-                native_token: None
             },
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -450,7 +443,6 @@ mod tests {
                         token_code_hash: "token2hash".to_string()
                     }
                 ),
-                native_token: None
             },
             HumanAddr("ammpairaddress".to_string()),
             "ammpairhash".to_string()
@@ -718,7 +710,6 @@ mod tests {
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
@@ -728,10 +719,8 @@ mod tests {
                         token_code_hash: "token1hash".to_string()
                     }
                 ),
-                native_token: None
             },
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -741,7 +730,6 @@ mod tests {
                         token_code_hash: "token2hash".to_string()
                     }
                 ),
-                native_token: None
             },
             HumanAddr("ammpairaddress".to_string()),
             "ammpairhash".to_string()
@@ -1010,7 +998,6 @@ mod tests {
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
@@ -1020,10 +1007,8 @@ mod tests {
                         token_code_hash: "token1hash".to_string()
                     }
                 ),
-                native_token: None
             },
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -1033,7 +1018,6 @@ mod tests {
                         token_code_hash: "token2hash".to_string()
                     }
                 ),
-                native_token: None
             },
             HumanAddr("ammpairaddress".to_string()),
             "ammpairhash".to_string()
@@ -1091,7 +1075,6 @@ mod tests {
             "factoryhash".to_string(),
             "factorykey".to_string(),
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
@@ -1100,11 +1083,9 @@ mod tests {
                         contract_addr: HumanAddr("token1address".to_string()),
                         token_code_hash: "token1hash".to_string()
                     }
-                ),
-                native_token: None
+                )
             },
             AssetInfo {
-                is_native_token: false,
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
@@ -1114,7 +1095,6 @@ mod tests {
                         token_code_hash: "token2hash".to_string()
                     }
                 ),
-                native_token: None
             },
             HumanAddr("ammpairaddress".to_string()),
             "ammpairhash".to_string()
@@ -1133,7 +1113,6 @@ mod tests {
             QueryAnswer::OrderBookPair {amm_pair_address, assets_info} => {
                 assert_eq!(amm_pair_address, HumanAddr("ammpairaddress".to_string()));
                 assert_eq!(assets_info[0],AssetInfo {
-                    is_native_token: false,
                     decimal_places: 6,
                     base_amount: Uint128(1000000),
                     fee_amount: Uint128(500000),
@@ -1143,10 +1122,8 @@ mod tests {
                             token_code_hash: "token1hash".to_string()
                         }
                     ),
-                    native_token: None
                 });
                 assert_eq!(assets_info[1],AssetInfo {
-                    is_native_token: false,
                         decimal_places: 18,
                         base_amount: Uint128(1000000000000000000),
                         fee_amount: Uint128(500000000000000000),
@@ -1156,7 +1133,6 @@ mod tests {
                                 token_code_hash: "token2hash".to_string()
                             }
                         ),
-                        native_token: None
                 });
             },
             _ => assert_eq!(true,false)
