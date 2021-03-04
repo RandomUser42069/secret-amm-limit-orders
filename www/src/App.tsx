@@ -3,14 +3,14 @@ import logo from './logo.svg';
 import './App.css';
 import { SigningCosmWasmClient } from 'secretjs';
 import ViewKeyButton from "./Containers/ViewKeyButton"
-import MyActiveLimitOrders from "./Containers/MyActiveLimitOrders"
-import MyHistoryLimitOrders from "./Containers/MyHistoryLimitOrders"
+import MyOrders from "./Containers/MyOrders";
+
 import 'bootstrap/dist/css/bootstrap.min.css';
 import CreateNewLimitOrder from "./Containers/CreateNewLimitOrder";
 import axios from 'axios';
 
 const AMM_FACTORY_ADDRESS="secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy"
-const ORDERS_FACTORY_ADDRESS="secret10dls0d070dmjksypfp3d4q3xe4c6jnknyy522g" 
+const ORDERS_FACTORY_ADDRESS="secret1g88jle3dd7mf9ncc4yphzztq8akvkemyggtad3" 
 const SSCRT_CONTRACT_ADDRESS="secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx"
 
 function App() {
@@ -35,7 +35,7 @@ function App() {
       setupKeplr(setClient);
       try {
         const response = await axios.get("https://scrt-bridge-api.azurewebsites.net/tokens/?page=0&size=1000");
-          setTokensData([...response.data.tokens,{
+          setTokensData([...response.data.tokens, {
             dst_address: SSCRT_CONTRACT_ADDRESS,
             decimals: 6,
             display_props: {
@@ -105,27 +105,15 @@ function App() {
                     viewKey={viewKey.value}
                     remountMyLimitOrders={remountMyLimitOrders}
                   /> 
-                  {
-                    <MyActiveLimitOrders 
-                      key={remountMyLimitOrdersCount} // Used to force remount this component
-                      remountMyLimitOrders={remountMyLimitOrders}
-                      ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
-                      tokensData={tokensData}
-                      client={client}
-                      viewKey={viewKey.value}
-                    />
-                  }
-                  <br/><br/><br/>
-                  {
-                    <MyHistoryLimitOrders 
-                      key={remountMyLimitOrdersCount} // Used to force remount this component
-                      remountMyLimitOrders={remountMyLimitOrders}
-                      ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
-                      tokensData={tokensData}
-                      client={client}
-                      viewKey={viewKey.value}
-                    />
-                  }
+                  <MyOrders 
+                    key={remountMyLimitOrdersCount}
+                    ORDERS_FACTORY_ADDRESS={ORDERS_FACTORY_ADDRESS}
+                    AMM_FACTORY_ADDRESS={AMM_FACTORY_ADDRESS}
+                    tokensData={tokensData}
+                    client={client}
+                    viewKey={viewKey.value}
+                    remountMyLimitOrders={remountMyLimitOrders}
+                  />
               </div>
           }
           

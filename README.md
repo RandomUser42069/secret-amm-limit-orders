@@ -25,7 +25,6 @@ TODO:
 * Admin commands for updating?
 
 ## Limitations
-* No Native token (for now)
 * Centralized way of triggering on each block
 * No fee taking to accomodate the triggerer gas fees
 

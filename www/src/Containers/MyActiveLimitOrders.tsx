@@ -1,87 +1,23 @@
 import React, {useState,useEffect} from 'react';
 import {Card, Button, Spinner, Modal, DropdownButton, Dropdown, Table} from 'react-bootstrap'
 
-const PAGINATION_LIMIT = 10;
-const PAGINATION_OFFSET = 0;
-
 // eslint-disable-next-line import/no-anonymous-default-export
 export default ({
     ORDERS_FACTORY_ADDRESS,
     remountMyLimitOrders,
     tokensData,
     client,
-    viewKey
-}: MyLimitOrdersProps) => {
-    const [myLimitOrders, setMyLimitOrders] = useState<any>(null)
-
-    useEffect(() => {
-        async function init() {
-            setMyLimitOrders(await client.execute.queryContractSmart(ORDERS_FACTORY_ADDRESS, { 
-                user_secret_order_books: {
-                    address: client.accountData.address,
-                    viewing_key: viewKey
-                }
-              }))
-          }
-        init()
-    }, [])
-
-    return (
-        <div>
-            ACTIVE ORDERS
-            <Table striped bordered hover>
-                <thead>
-                    <tr>
-                        <th>Creation Date</th>
-                        <th>Pair</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Limit Order</th>
-                        <th>Triggered Price</th>
-                        <th>Current Price</th>
-                        <th>Cancel</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {!myLimitOrders && <Spinner animation="border"/>}
-                {
-                    myLimitOrders && myLimitOrders.user_secret_order_books.user_secret_order_book &&
-                        myLimitOrders.user_secret_order_books.user_secret_order_book.map((orderBookAddress: string) => 
-                            <MyLimitOrder 
-                                orderBookAddress={orderBookAddress}
-                                remountMyLimitOrders={remountMyLimitOrders}
-                                tokensData={tokensData}
-                                client={client}
-                                viewKey={viewKey}
-                                myLimitOrders={myLimitOrders}
-                                setMyLimitOrders={setMyLimitOrders}
-                            />)
-                }
-                </tbody>
-            </Table>
-        </div>
-        
-    )
-}
-
-
-const MyLimitOrder = ({
-    orderBookAddress,
-    remountMyLimitOrders,
-    tokensData,
-    client,
     viewKey,
-    myLimitOrders,
-    setMyLimitOrders
-}: any) => {
+    pair
+}: MyLimitOrdersProps) => {
     const [activelimitOrderData, setActiveLimitOrderData] = useState<any>(null)
     const [historyLimitOrdersData, setHistoryLimitOrdersData] = useState<any>(null)
     const [orderBookTokensData, setOrderBookTokensData] = useState<any>(null)
     const [ammPriceData, setAmmPriceData] = useState<any>(null)
-
+    
     useEffect(() => {
         async function init() {
-            const limitOrderPromise = client.execute.queryContractSmart(orderBookAddress, { 
+            const limitOrderPromise = client.execute.queryContractSmart(pair.contract_addr, { 
                 get_active_limit_order: {
                     user_address: client.accountData.address,
                     user_viewkey: viewKey,
@@ -90,19 +26,18 @@ const MyLimitOrder = ({
                 }
               })
 
-            const orderBookTokenDataPromise = client.execute.queryContractSmart(orderBookAddress, { 
+            const orderBookTokenDataPromise = client.execute.queryContractSmart(pair.contract_addr, { 
                 order_book_pair_info: {}
               })
 
             const [limitOrder, orderBookTokenData] = await Promise.all([limitOrderPromise, orderBookTokenDataPromise]);
 
-            
             setActiveLimitOrderData(limitOrder.active_limit_order.active_limit_order)
             setOrderBookTokensData(orderBookTokenData.order_book_pair)
             setAmmPriceData(await getAmmPrice(orderBookTokenData.order_book_pair))
 
             setInterval(async () => {
-                const limitOrder = await client.execute.queryContractSmart(orderBookAddress, { 
+                const limitOrder = await client.execute.queryContractSmart(pair.contract_addr, { 
                     get_active_limit_order: {
                         user_address: client.accountData.address,
                         user_viewkey: viewKey,
@@ -185,13 +120,27 @@ const MyLimitOrder = ({
     const rowStyle = activelimitOrderData ? {
         backgroundColor: activelimitOrderData.status === "Filled" ? "#Cfffbc" : "#Fff4ad"
     } : undefined
-    
+
     return (
-        <React.Fragment>
-            {
-                // active order
-                activelimitOrderData &&
-                    <tr key={orderBookAddress} style={rowStyle}>
+        <div>
+            ACTIVE ORDERS
+            <Table striped bordered hover>
+                <thead>
+                    <tr>
+                        <th>Creation Date</th>
+                        <th>Pair</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Limit Order</th>
+                        <th>Triggered Price</th>
+                        <th>Current Price</th>
+                        <th>Cancel</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {
+                    activelimitOrderData && 
+                    <tr key={pair.contract_addr} style={rowStyle}>
                         <td>{new Date(activelimitOrderData.timestamp*1000).toLocaleString()}</td>
                         {orderBookTokensData && tokensData && <td>{pairDisplay()}</td>}
                         <td>{activelimitOrderData.is_bid ? "Buy" : "Sell"}</td>
@@ -214,13 +163,9 @@ const MyLimitOrder = ({
                         {<td>{ammPriceData ? displayPrice("amm", activelimitOrderData) : " - "}</td>}
                         {activelimitOrderData && <td>{<Button onClick={ async () => {
                             try{
-                                await client.execute.execute(orderBookAddress, { 
+                                await client.execute.execute(pair.contract_addr, { 
                                     cancel_limit_order: {}
                                 })
-                                let update = {...myLimitOrders}
-                                let arr = update.user_secret_order_books.user_secret_order_book.filter((address: string) => address !== orderBookAddress)
-                                update.user_secret_order_books.user_secret_order_book = arr
-                                setMyLimitOrders(update)
                                 remountMyLimitOrders()
                             } catch (e) {
                                 alert("error on widthdraw: " + e)
@@ -230,37 +175,11 @@ const MyLimitOrder = ({
                             {activelimitOrderData && orderBookTokensData && displayBalance(0, activelimitOrderData) + "  and  " + displayBalance(1, activelimitOrderData)}
                         </Button>}</td>}
                     </tr>
-            }
-            {
-                /*
-                limitOrdersData && limitOrdersData.history_orders.length > 0 && 
-                    limitOrdersData.history_orders.map((history_order:any) => 
-                        <tr key={history_order.timestamp}>
-                            <td>{new Date(history_order.timestamp*1000).toLocaleString()}</td>
-                            {orderBookTokensData && tokensData && <td>{pairDisplay()}</td>}
-                            <td>{history_order.is_bid ? "Buy" : "Sell"}</td>
-                            <td>{history_order.status}</td>
-                            {orderBookTokensData && 
-                                <div>
-                                    {displayPrice("order", history_order)} <br/><br/>
-                                    {getDepositedAmount(history_order)}<br/>
-                                    {getExpectedAmount(history_order)}
-                                </div>}
-                            {<td>{
-                                <div>
-                                    {
-                                        ammPriceData && 
-                                        history_order.status === "Filled" ? 
-                                        displayPrice("triggered", history_order)
-                                        : " - "}
-                                </div>
-                            }</td>}
-                            {<td> - </td>}
-                            {<td>Withdrew:  {history_order.withdrew_balance && orderBookTokensData && displayBalance(0, history_order, true) + "  and  " + displayBalance(1, history_order, true)}</td>}
-                        </tr>
-                    )*/
-            }
-        </React.Fragment>
+                }
+                </tbody>
+            </Table>
+        </div>
+        
     )
 }
 
@@ -269,5 +188,6 @@ type MyLimitOrdersProps = {
     remountMyLimitOrders: any,
     client: any,
     tokensData: any,
-    viewKey: string | null
+    viewKey: string | null,
+    pair: any
 }

@@ -10,76 +10,16 @@ export default ({
     remountMyLimitOrders,
     tokensData,
     client,
-    viewKey
-}: MyLimitOrdersProps) => {
-    const [myLimitOrders, setMyLimitOrders] = useState<any>(null)
-
-    useEffect(() => {
-        async function init() {
-            setMyLimitOrders(await client.execute.queryContractSmart(ORDERS_FACTORY_ADDRESS, { 
-                user_secret_order_books: {
-                    address: client.accountData.address,
-                    viewing_key: viewKey
-                }
-              }))
-          }
-        init()
-    }, [])
-
-    return (
-        <div>
-            HISTORY ORDERS
-            <Table striped bordered hover>
-                <thead>
-                    <tr>
-                        <th>Creation Date</th>
-                        <th>Pair</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Limit Order</th>
-                        <th>Triggered Price</th>
-                        <th>Withdraw</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {!myLimitOrders && <Spinner animation="border"/>}
-                {
-                    myLimitOrders && myLimitOrders.user_secret_order_books.user_secret_order_book &&
-                        myLimitOrders.user_secret_order_books.user_secret_order_book.map((orderBookAddress: string) => 
-                            <MyLimitOrder 
-                                orderBookAddress={orderBookAddress}
-                                remountMyLimitOrders={remountMyLimitOrders}
-                                tokensData={tokensData}
-                                client={client}
-                                viewKey={viewKey}
-                                myLimitOrders={myLimitOrders}
-                                setMyLimitOrders={setMyLimitOrders}
-                            />)
-                }
-                </tbody>
-            </Table>
-        </div>
-        
-    )
-}
-
-
-const MyLimitOrder = ({
-    orderBookAddress,
-    remountMyLimitOrders,
-    tokensData,
-    client,
     viewKey,
-    myLimitOrders,
-    setMyLimitOrders
-}: any) => {
+    pair
+}: MyLimitOrdersProps) => {
     const [historyLimitOrdersData, setHistoryLimitOrdersData] = useState<any>(null)
     const [orderBookTokensData, setOrderBookTokensData] = useState<any>(null)
     const [ammPriceData, setAmmPriceData] = useState<any>(null)
 
     useEffect(() => {
         async function init() {
-            const limitOrderPromise = client.execute.queryContractSmart(orderBookAddress, { 
+            const limitOrderPromise = client.execute.queryContractSmart(pair.contract_addr, { 
                 get_history_limit_orders: {
                     user_address: client.accountData.address,
                     user_viewkey: viewKey,
@@ -88,19 +28,18 @@ const MyLimitOrder = ({
                 }
               })
 
-            const orderBookTokenDataPromise = client.execute.queryContractSmart(orderBookAddress, { 
+            const orderBookTokenDataPromise = client.execute.queryContractSmart(pair.contract_addr, { 
                 order_book_pair_info: {}
               })
 
             const [limitOrder, orderBookTokenData] = await Promise.all([limitOrderPromise, orderBookTokenDataPromise]);
 
-            console.log(limitOrder)
             setHistoryLimitOrdersData(limitOrder.history_limit_orders.history_limit_orders)
             setOrderBookTokensData(orderBookTokenData.order_book_pair)
             setAmmPriceData(await getAmmPrice(orderBookTokenData.order_book_pair))
 
             setInterval(async () => {
-                const limitOrder = await client.execute.queryContractSmart(orderBookAddress, { 
+                const limitOrder = await client.execute.queryContractSmart(pair.contract_addr, { 
                     get_history_limit_orders: {
                         user_address: client.accountData.address,
                         user_viewkey: viewKey,
@@ -185,8 +124,22 @@ const MyLimitOrder = ({
     }
 
     return (
-        <React.Fragment>
-            {
+        <div>
+            HISTORY ORDERS
+            <Table striped bordered hover>
+                <thead>
+                    <tr>
+                        <th>Creation Date</th>
+                        <th>Pair</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Limit Order</th>
+                        <th>Triggered Price</th>
+                        <th>Withdraw</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {
                 historyLimitOrdersData && historyLimitOrdersData.length > 0 && 
                     historyLimitOrdersData.map((history_order:any) => 
                         <tr key={history_order.timestamp}>
@@ -213,7 +166,10 @@ const MyLimitOrder = ({
                         </tr>
                     )
             }
-        </React.Fragment>
+                </tbody>
+            </Table>
+        </div>
+        
     )
 }
 
@@ -222,5 +178,6 @@ type MyLimitOrdersProps = {
     remountMyLimitOrders: any,
     client: any,
     tokensData: any,
-    viewKey: string | null
+    viewKey: string | null,
+    pair: any
 }
