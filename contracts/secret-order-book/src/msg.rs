@@ -235,6 +235,7 @@ pub struct LimitOrderState {
     pub deposit_token_index: i8,
     pub deposit_amount: Uint128,
     pub expected_amount: Uint128,
+    pub fee_amount: Uint128,
     pub balances: Vec<Uint128>,
     pub withdrew_balance: Option<Vec<Uint128>>,
     pub timestamp: u64

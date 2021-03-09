@@ -10,12 +10,12 @@ token1_hash="CD400FB73F5C99EDBC6AAB22C2593332B8C9F2EA806BF9B42E3A523F3AD06F62"
 token1_my_vk="api_key_ZA1M96VGOLex1WycZwXQObNCdAcqNCQDQIcIGjCSPO8="
 token2_address="secret1ttg5cn3mv5n9qv8r53stt6cjx8qft8ut9d66ed"
 token2_hash="2DA545EBC441BE05C9FA6338F3353F35AC02EC4B02454BC49B1A66F4B9866AED"
-token2_vk="api_key_Kp5R1zMjYEdxEgtRn/TuSsUQPuxhMdBaDVCKyeT9vDQ="
+token2_vk="api_key_9wAJa3CL2MedxU/EshdxWu4Q3v4doqIfMjaz+SoIGzI="
 
 order_vk="bRQ1eAVGhow65b/Sldnxg8MAacJxpVcz//xbFFSIZJk="
 
 #Check Hashes
-#secretcli query compute tx E6EB92A34F9DF387E749A9750C73158FD810D3AC4BC3FE777621AADE0A107C2B
+#secretcli query compute tx 2193CE0608CB3CCD8DD9733C0A5CFA62A937C25D20FF65099EBE74C7B26D8439
 
 #Create VK
 #secretcli tx compute execute $order_factory_contract_address '{"create_viewing_key": { "entropy": "123"}}' --from a -y --gas 1500000 -b block 

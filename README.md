@@ -5,7 +5,6 @@
 TODO:
 * TODO: Implement the fee logic after the swap (trigger of a limit order) (take the fee from the swapped token)
 	* Transfer fees directly to triggerer account
-	* Fees are defined by the admin that created the pair
 	
 * TODO: Admin can change the fees for an asset
 * TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries

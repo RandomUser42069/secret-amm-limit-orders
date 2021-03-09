@@ -13,6 +13,7 @@ pub const ACTIVE_LIMIT_ORDERS: &[u8] = b"activelimitorders";
 pub const BID_ORDER_QUEUE: &[u8] = b"bidordequeue";
 pub const ASK_ORDER_QUEUE: &[u8] = b"askorderqueue";
 pub const SWAPPED_LIMIT_ORDER: &[u8] = b"swappedlimitorder";
+pub const SWAPPED_TRIGGER_ADDRESS: &[u8] = b"swappedtriggeraddress";
 pub const BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -198,19 +199,22 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     }
 
     // check if valid price and quantity
+    let fee_amount: Uint128;
     let mut min_deposit_amount: Uint128 = Uint128(0);
     let mut min_expected_amount: Uint128 = Uint128(0);
     if is_bid == true {
         min_deposit_amount = token2_info.min_amount;
         min_expected_amount = token1_info.min_amount;
+        fee_amount = token1_info.fee_amount;
     } else {
         min_deposit_amount = token1_info.min_amount;
         min_expected_amount = token2_info.min_amount;
+        fee_amount = token2_info.fee_amount;
     }
-    if deposit_amount <= min_deposit_amount || expected_amount <= min_expected_amount || price <= Uint128(0) {
+    if deposit_amount < min_deposit_amount || expected_amount < min_expected_amount || price <= Uint128(0) {
         return Err(StdError::generic_err(format!(
             "Bad Amount or Price! 
-            {} <= {} || {} <= {} || {} <= {}",
+            {} < {} || {} < {} || {} <= {}",
             deposit_amount,
             min_deposit_amount,
             expected_amount,
@@ -237,6 +241,7 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
         deposit_token_index,
         deposit_amount,
         expected_amount,
+        fee_amount,
         timestamp: env.block.time,
         balances,
         withdrew_balance: None
@@ -279,6 +284,7 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     env: Env,
     amount: Uint128
 ) -> StdResult<HandleResponse>{
+    let trigger_address: HumanAddr = load(&mut deps.storage, SWAPPED_TRIGGER_ADDRESS)?;
     let order_id: HumanAddr = load(&mut deps.storage, SWAPPED_LIMIT_ORDER)?;
     let order_id_canonical = deps.api.canonical_address(&order_id)?;
     let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
@@ -293,7 +299,8 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
     }
 
     // Calculate Fees and separate the amount the user needs to receive from the fees
-    let user_amount: Uint128 = amount;
+    let order_fees: Uint128 = limit_order_data.clone().unwrap().fee_amount;
+    let user_amount: Uint128 = (amount - order_fees).unwrap();
     
     // Transfer the amount received to the user
     let token_contract_address: HumanAddr;
@@ -307,13 +314,23 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
         token_contract_hash = token2_info.token.clone().unwrap().token_code_hash;
     }
 
-    let mut transfer_result: CosmosMsg = transfer_msg(
+    let transfer_result1: CosmosMsg = transfer_msg(
         order_id.clone(),
         user_amount,
         None,
         BLOCK_SIZE,
-        token_contract_hash,
-        token_contract_address
+        token_contract_hash.clone(),
+        token_contract_address.clone()
+    ).unwrap();
+
+    // Transfer the fee to the triggerer
+    let transfer_result2: CosmosMsg = transfer_msg(
+        trigger_address.clone(),
+        order_fees,
+        None,
+        BLOCK_SIZE,
+        token_contract_hash.clone(),
+        token_contract_address.clone()
     ).unwrap();
 
     // Get limit order from active and modify
@@ -334,7 +351,9 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
 
     // Remove from active limit order and queue
     remove(&mut active_limit_orders_data,&order_id_canonical.as_slice());
-
+    remove(&mut deps.storage,SWAPPED_TRIGGER_ADDRESS);
+    remove(&mut deps.storage,SWAPPED_LIMIT_ORDER);
+    
     if modify_limit_order.is_bid == true {
         let mut bid_order_book:OrderQueue = load(&mut deps.storage, BID_ORDER_QUEUE).unwrap();
         bid_order_book.remove(
@@ -356,7 +375,8 @@ pub fn swap_callback<S: Storage, A: Api, Q: Querier>(
         
     Ok(HandleResponse {
         messages: vec![
-            transfer_result
+            transfer_result1,
+            transfer_result2
         ],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Status {
@@ -467,7 +487,8 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     
         // Set the swapped limit order
         save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
-
+        save(&mut deps.storage, SWAPPED_TRIGGER_ADDRESS, &env.message.sender)?;
+        
         let swap_response = snip20::send_msg(
             amm_pair_address, 
             limit_order_state.clone().unwrap().balances[1], 
@@ -496,6 +517,7 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
     
         // Set the swapped limit order
         save(&mut deps.storage, SWAPPED_LIMIT_ORDER, &order_id.unwrap())?;
+        save(&mut deps.storage, SWAPPED_TRIGGER_ADDRESS, &env.message.sender)?;
 
         let swap_response = snip20::send_msg(
             amm_pair_address, 
