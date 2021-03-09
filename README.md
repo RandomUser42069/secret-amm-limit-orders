@@ -3,16 +3,14 @@
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
 TODO:
-* TODO: Adapt frontend with these changes! Instead of query user orderbooks, have a dropdown with available pairs
-	* TODO: Delete everything that relates to native tokens!
-	* TODO: Delete User Orderbooks because to change the fees it will be hard and is adding gas cost!
-
-* TODO: Implement the fee logic after the swap (trigger of a limit order)
+* TODO: Implement the fee logic after the swap (trigger of a limit order) (take the fee from the swapped token)
+	* Transfer fees directly to triggerer account
+	* Fees are defined by the admin that created the pair
+	
 * TODO: Admin can change the fees for an asset
 * TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries
 * TODO: OrderTriggererScript to verifiy multiple pairs at the same time (Nodejs backend?)
 * TODO: SECURITY CHECK
-
 
 * On the creation/execution of limit orders, a fee needs to be accomodated/payed to cover the triggerer gas prices
 * This fee is transfered to the triggerer account when the swap message is received (Fee in Buy Token or Sell Token?)
