@@ -120,6 +120,7 @@ pub struct AssetInfo {
     pub decimal_places: u8,
     pub base_amount: Uint128,
     pub fee_amount: Uint128,
+    pub min_amount: Uint128,
     pub token: Option<Token>
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

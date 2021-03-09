@@ -124,6 +124,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -135,6 +136,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -425,6 +427,7 @@ mod tests {
             AssetInfo {
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
+                min_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
                 token: Some(
                     Token {
@@ -435,6 +438,7 @@ mod tests {
             },
             AssetInfo {
                 decimal_places: 18,
+                min_amount: Uint128(1500000000000000),
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
                 token: Some(
@@ -713,6 +717,7 @@ mod tests {
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
+                min_amount: Uint128(1000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -724,6 +729,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1001,6 +1007,7 @@ mod tests {
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
+                min_amount: Uint128(1000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -1012,6 +1019,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1078,6 +1086,7 @@ mod tests {
                 decimal_places: 6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
+                min_amount: Uint128(1000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token1address".to_string()),
@@ -1089,6 +1098,7 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(
                     Token {
                         contract_addr: HumanAddr("token2address".to_string()),
@@ -1116,6 +1126,7 @@ mod tests {
                     decimal_places: 6,
                     base_amount: Uint128(1000000),
                     fee_amount: Uint128(500000),
+                    min_amount: Uint128(1000000),
                     token: Some(
                         Token {
                             contract_addr: HumanAddr("token1address".to_string()),
@@ -1127,6 +1138,7 @@ mod tests {
                         decimal_places: 18,
                         base_amount: Uint128(1000000000000000000),
                         fee_amount: Uint128(500000000000000000),
+                        min_amount: Uint128(1500000000000000),
                         token: Some(
                             Token {
                                 contract_addr: HumanAddr("token2address".to_string()),

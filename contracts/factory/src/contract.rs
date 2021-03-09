@@ -150,6 +150,7 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
             decimal_places: 0,
             base_amount: Uint128(0),
             fee_amount: token1_fee.clone(),
+            min_amount: token1_fee.clone().multiply_ratio(Uint128(2),Uint128(1)),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash
@@ -167,6 +168,7 @@ fn try_secret_order_book_instanciate<S: Storage, A: Api, Q: Querier>(
             decimal_places: 0,
             base_amount: Uint128(0),
             fee_amount: token2_fee.clone(),
+            min_amount: token2_fee.clone().multiply_ratio(Uint128(2),Uint128(1)),
             token: Some(Token {
                 contract_addr: HumanAddr(contract_addr),
                 token_code_hash

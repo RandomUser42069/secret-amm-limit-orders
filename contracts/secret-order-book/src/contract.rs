@@ -182,6 +182,9 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     is_bid: bool,
     price: Uint128
 ) -> StdResult<HandleResponse> {
+    let token1_info: AssetInfo = load(&deps.storage, TOKEN1_DATA).unwrap();
+    let token2_info: AssetInfo = load(&deps.storage, TOKEN2_DATA).unwrap();
+    
     // Create new user limit order
     let user_address = deps.api.canonical_address(&from)?;
 
@@ -195,9 +198,25 @@ pub fn create_limit_order<S: Storage, A: Api, Q: Querier>(
     }
 
     // check if valid price and quantity
-    if deposit_amount <= Uint128(0) || expected_amount <= Uint128(0) || price <= Uint128(0) {
+    let mut min_deposit_amount: Uint128 = Uint128(0);
+    let mut min_expected_amount: Uint128 = Uint128(0);
+    if is_bid == true {
+        min_deposit_amount = token2_info.min_amount;
+        min_expected_amount = token1_info.min_amount;
+    } else {
+        min_deposit_amount = token1_info.min_amount;
+        min_expected_amount = token2_info.min_amount;
+    }
+    if deposit_amount <= min_deposit_amount || expected_amount <= min_expected_amount || price <= Uint128(0) {
         return Err(StdError::generic_err(format!(
-            "Bad Amount or Price!"
+            "Bad Amount or Price! 
+            {} <= {} || {} <= {} || {} <= {}",
+            deposit_amount,
+            min_deposit_amount,
+            expected_amount,
+            min_expected_amount,
+            price,
+            Uint128(0)
         ))); 
     }
 

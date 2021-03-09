@@ -234,12 +234,14 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
             },
             token2_info: AssetInfo {
                 decimal_places:6,
                 base_amount: Uint128(1000000),
                 fee_amount: Uint128(500000),
+                min_amount: Uint128(1000000),
                 token: None,
             },
             amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
@@ -259,12 +261,14 @@ mod tests {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
             },
             token2_info: AssetInfo {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
                 fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
                 token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
             },
             amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
@@ -297,12 +301,14 @@ mod tests {
                         decimal_places: 18,
                         base_amount: Uint128(1000000000000000000),
                         fee_amount: Uint128(500000000000000000),
+                        min_amount: Uint128(1500000000000000),
                         token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                     },
                     AssetInfo {
                         token: None,
                         base_amount: Uint128(1000000),
                         fee_amount: Uint128(500000),
+                        min_amount: Uint128(1000000),
                         decimal_places: 6,
                     }
                 ]);
@@ -313,12 +319,14 @@ mod tests {
                             decimal_places: 18,
                             base_amount: Uint128(1000000000000000000),
                             fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                         },
                         AssetInfo {
                             decimal_places: 18,
                             base_amount: Uint128(1000000000000000000),
                             fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                         }
                     ]);
@@ -346,12 +354,14 @@ mod tests {
                         decimal_places: 18,
                         base_amount: Uint128(1000000000000000000),
                         fee_amount: Uint128(500000000000000000),
+                        min_amount: Uint128(1500000000000000),
                         token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
                     },
                     AssetInfo {
                         token: None,
                         base_amount: Uint128(1000000),
                         fee_amount: Uint128(500000),
+                        min_amount: Uint128(1000000),
                         decimal_places: 6
                     }
                 ])
@@ -379,12 +389,14 @@ mod tests {
                             decimal_places: 18,
                             base_amount: Uint128(1000000000000000000),
                             fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()})
                         },
                         AssetInfo {
                             decimal_places: 18,
                             base_amount: Uint128(1000000000000000000),
                             fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
                             token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
                         }
                     ])
