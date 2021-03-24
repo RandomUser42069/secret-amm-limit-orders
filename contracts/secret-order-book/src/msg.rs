@@ -47,11 +47,12 @@ impl Snip20Msg {
 }
 
 /// the factory's handle messages this auction will call
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FactoryHandleMsg {
     InitCallBackFromSecretOrderBookToFactory  {
         auth_key: String,
+        contract_hash: String,
         contract_address: HumanAddr,
         amm_pair_address: HumanAddr,
         token1_info: AssetInfo,
@@ -73,7 +74,12 @@ pub enum HandleMsg {
         expected_amount: Uint128
     },
     CancelLimitOrder {},
-    TriggerLimitOrders {}
+    TriggerLimitOrders {},
+    ChangeFee {
+        token_index: i8,
+        min_amount: Uint128,
+        fee_amount: Uint128
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

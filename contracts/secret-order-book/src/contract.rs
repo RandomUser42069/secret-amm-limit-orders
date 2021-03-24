@@ -37,7 +37,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     save(&mut amm_pair_data, b"hash", &msg.amm_pair_contract_hash)?;
 
     // send register to snip20
-    let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.contract_code_hash))?;
+    let snip20_register_msg = to_binary(&Snip20Msg::register_receive(env.clone().contract_code_hash))?;
     
     let mut token1_response: Option<CosmosMsg> = None;
     let mut token2_response: Option<CosmosMsg> = None;
@@ -63,10 +63,14 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     }));
     
+    let contract_hash:String = env.contract_code_hash;
+    let contract_address: HumanAddr = env.contract.address;
+
     // send callback to factory
     let callback_msg = FactoryHandleMsg::InitCallBackFromSecretOrderBookToFactory {
         auth_key: msg.factory_key.clone(),
-        contract_address: env.contract.address,
+        contract_hash,
+        contract_address,
         amm_pair_address: msg.amm_pair_contract_address,
         token1_info: msg.token1_info.clone(),
         token2_info: msg.token2_info.clone(),
@@ -95,6 +99,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         // Receiver to CreateLimitOrder from SCRT
         HandleMsg::CancelLimitOrder {} => try_cancel_limit_order(deps, env), 
         HandleMsg::TriggerLimitOrders {} => try_trigger_limit_orders(deps, env), 
+        HandleMsg::ChangeFee {
+            token_index,
+            min_amount,
+            fee_amount
+        } => try_change_fee(deps, env, token_index, min_amount, fee_amount),
         _ => Err(StdError::generic_err("Handler not found!"))
     } 
 }
@@ -542,6 +551,44 @@ pub fn try_trigger_limit_orders<S: Storage, A: Api, Q: Querier>(
 
     return Ok(HandleResponse::default())
 }
+
+pub fn try_change_fee<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    token_index: i8,
+    min_amount: Uint128,
+    fee_amount: Uint128
+) -> StdResult<HandleResponse>{ 
+    // 1. Check if it came from factory!
+    let factory_data = ReadonlyPrefixedStorage::new(FACTORY_DATA, &deps.storage);
+    let factory_contract_address: HumanAddr = load(&factory_data, b"address")?;
+
+    if factory_contract_address != env.message.sender {
+        return Err(StdError::generic_err(format!(
+            "Message did not came from factory!"
+        ))); 
+    }
+    // 2. change token state on the storage dependong on the token index 
+    let mut token_data: AssetInfo;
+
+    if token_index == 0 {
+        token_data = load(&deps.storage,TOKEN1_DATA).unwrap();
+    } else {
+        token_data = load(&deps.storage,TOKEN2_DATA).unwrap();
+    }
+
+    token_data.min_amount = min_amount;
+    token_data.fee_amount = fee_amount;
+
+    if token_index == 0 {
+        save(&mut deps.storage, TOKEN1_DATA, &token_data)?;
+    } else {
+        save(&mut deps.storage, TOKEN2_DATA, &token_data)?;
+    }
+    
+    return Ok(HandleResponse::default())
+}
+
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,

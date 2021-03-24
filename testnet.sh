@@ -1,6 +1,6 @@
 #!/bin/bash
 
-order_factory_contract_address="secret1g88jle3dd7mf9ncc4yphzztq8akvkemyggtad3"
+order_factory_contract_address="secret1d6g7y7hh6jwm0wudkzx8dx000q602qwuja8ssh"
 
 my_address="secret1uwdn876f5cal4dskdzny3szml8tgdlgfedtnxy"
 amm_pair_address="secret148jpzfh6lvencwtxa6czsk8mxm7kuecncz0g0y"
@@ -15,19 +15,24 @@ token2_vk="api_key_9wAJa3CL2MedxU/EshdxWu4Q3v4doqIfMjaz+SoIGzI="
 order_vk="bRQ1eAVGhow65b/Sldnxg8MAacJxpVcz//xbFFSIZJk="
 
 #Check Hashes
-#secretcli query compute tx 2193CE0608CB3CCD8DD9733C0A5CFA62A937C25D20FF65099EBE74C7B26D8439
+#secretcli query compute tx 74D5D218E261A9C52A3CDAC44FE2C5B69A10D7868C8B3DD557238F4257D204F7
 
 #Create VK
 #secretcli tx compute execute $order_factory_contract_address '{"create_viewing_key": { "entropy": "123"}}' --from a -y --gas 1500000 -b block 
 
+#Change fees
+#secretcli tx compute execute secret1d6g7y7hh6jwm0wudkzx8dx000q602qwuja8ssh '{"change_asset_fee": { "amm_pairs_address": ["secret148jpzfh6lvencwtxa6czsk8mxm7kuecncz0g0y"], "asset_contract_address": "secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx", "new_asset_fee": "2000000"}}' --from a -y --gas 1500000 -b block 
+
 #Check Balance
 #secretcli q compute query $token2_address '{"balance": {"address":"'$my_address'", "key":"'$token2_vk'"}}'
+#secretcli q compute query secret1s7c6xp9wltthk5r6mmavql4xld5me3g37guhsx '{"balance": {"address":"secret1uwdn876f5cal4dskdzny3szml8tgdlgfedtnxy", "key":"api_key_ZA1M96VGOLex1WycZwXQObNCdAcqNCQDQIcIGjCSPO8="}}'
 
 #Check AMM pair info
 #secretcli q compute query secret1ypfxpp4ev2sd9vj9ygmsmfxul25xt9cfadrxxy '{"pairs": {}}'
 
 #Get Secret Order Books
 #secretcli q compute query $order_factory_contract_address '{"secret_order_books":{}}'
+
 
 #Create Pair on order factory address
 #secretcli tx compute execute $order_factory_contract_address '{"new_secret_order_book_instanciate": { "amm_pair_address": "'$amm_pair_address'", "amm_pair_hash": "'$amm_pair_hash'", "token1_fee": "0", "token2_fee": "0"}}' --from a -y --gas 1500000 -b block 

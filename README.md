@@ -2,10 +2,11 @@
 
 [Issue Description](https://github.com/enigmampc/SecretNetwork/issues/699)
 
+# TESTNET ADDRESSES
+
+* Secret Order Book Factory: secret13za6s8dkk84uhdev8mjjgt7y4p0ws0sdm3pj5n
+
 TODO:
-* TODO: Implement the fee logic after the swap (trigger of a limit order) (take the fee from the swapped token)
-	* Transfer fees directly to triggerer account
-	
 * TODO: Admin can change the fees for an asset
 * TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries
 * TODO: OrderTriggererScript to verifiy multiple pairs at the same time (Nodejs backend?)

@@ -230,6 +230,7 @@ mod tests {
         let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
             contract_address: HumanAddr("contract1".to_string()),
+            contract_hash: "xfadsf".to_string(),
             token1_info: AssetInfo {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
@@ -257,6 +258,7 @@ mod tests {
         let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
             contract_address: HumanAddr("contract2".to_string()),
+            contract_hash: "xfadsf".to_string(),
             token1_info: AssetInfo {
                 decimal_places: 18,
                 base_amount: Uint128(1000000000000000000),
@@ -422,4 +424,180 @@ mod tests {
             _ => {}
         }
     }
+
+    #[test]
+    fn test_handle_change_asset_fee() {
+        let (init_result, mut deps) = init_helper(
+            "123124".to_string(),
+            10,
+            "DFADFA123123".to_string(),
+            HumanAddr("ammfactoryaddress".to_string()),
+            "ammfactoryhash".to_string()
+        );
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+    
+        let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
+            auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
+            contract_address: HumanAddr("contract1".to_string()),
+            contract_hash: "xfadsf".to_string(),
+            token1_info: AssetInfo {
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+            },
+            token2_info: AssetInfo {
+                decimal_places:6,
+                base_amount: Uint128(1000000),
+                fee_amount: Uint128(500000),
+                min_amount: Uint128(1000000),
+                token: None,
+            },
+            amm_pair_address: HumanAddr("ammpaircontract1".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+    
+        let handle_msg = HandleMsg::InitCallBackFromSecretOrderBookToFactory {
+            auth_key:"TF9fujurR33f73E4II+o5cLzwuXBMVrT9kpapaqT8GM=".to_string(),
+            contract_address: HumanAddr("contract2".to_string()),
+            contract_hash: "xfadsf".to_string(),
+            token1_info: AssetInfo {
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
+                token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+            },
+            token2_info: AssetInfo {
+                decimal_places: 18,
+                base_amount: Uint128(1000000000000000000),
+                fee_amount: Uint128(500000000000000000),
+                min_amount: Uint128(1500000000000000),
+                token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+            },
+            amm_pair_address: HumanAddr("ammpaircontract2".to_string()),
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+
+        let handle_msg = HandleMsg::ChangeAssetFee {
+            amm_pairs_address: vec![HumanAddr("ammpaircontract2".to_string())],
+            asset_contract_address: HumanAddr("token3".to_string()),
+            new_asset_fee: Uint128(1000000000000000000)
+        };
+    
+        let handle_result = handle(&mut deps, mock_env("admin", &[]), handle_msg.clone());
+        assert!(
+            handle_result.is_ok(),
+            "handle() failed: {}",
+            handle_result.err().unwrap()
+        ); 
+
+        let query_msg = QueryMsg::SecretOrderBook {
+            amm_pair_contract_addr: HumanAddr("ammpaircontract2".to_string()),
+        };
+    
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::SecretOrderBook { secret_order_book } => {
+                assert_eq!(secret_order_book.unwrap().asset_infos, 
+                    vec![
+                        AssetInfo {
+                            decimal_places: 18,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()})
+                        },
+                        AssetInfo {
+                            decimal_places: 18,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(1000000000000000000),
+                            min_amount: Uint128(2000000000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+                        }
+                    ])
+            },
+            _ => {}
+        }
+
+        let query_msg = QueryMsg::SecretOrderBooks {
+            page: None,
+            page_size: None
+        };
+    
+        let query_result = query(&deps, query_msg);
+        assert!(
+            query_result.is_ok(),
+            "Init failed: {}",
+            query_result.err().unwrap()
+        );
+
+        let query_answer: QueryAnswer = from_binary(&query_result.unwrap()).unwrap();
+        match query_answer {
+            QueryAnswer::SecretOrderBooks { secret_order_books } => {
+                assert_eq!(secret_order_books[0].asset_infos, vec![
+                    AssetInfo {
+                        decimal_places: 18,
+                        base_amount: Uint128(1000000000000000000),
+                        fee_amount: Uint128(500000000000000000),
+                        min_amount: Uint128(1500000000000000),
+                        token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                    },
+                    AssetInfo {
+                        token: None,
+                        base_amount: Uint128(1000000),
+                        fee_amount: Uint128(500000),
+                        min_amount: Uint128(1000000),
+                        decimal_places: 6,
+                    }
+                ]);
+                assert_eq!(secret_order_books[0].amm_pair_contract_addr, HumanAddr("ammpaircontract1".to_string()));
+                assert_eq!(secret_order_books[0].contract_addr, HumanAddr("contract1".to_string()));
+                assert_eq!(secret_order_books[1].asset_infos, vec![
+                        AssetInfo {
+                            decimal_places: 18,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(500000000000000000),
+                            min_amount: Uint128(1500000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token1".to_string()),token_code_hash:"".to_string()}),
+                        },
+                        AssetInfo {
+                            decimal_places: 18,
+                            base_amount: Uint128(1000000000000000000),
+                            fee_amount: Uint128(1000000000000000000),
+                            min_amount: Uint128(2000000000000000000),
+                            token: Some(Token {contract_addr:HumanAddr("token3".to_string()),token_code_hash:"".to_string()}),
+                        }
+                    ]);
+                assert_eq!(secret_order_books[1].amm_pair_contract_addr, HumanAddr("ammpaircontract2".to_string()));
+                assert_eq!(secret_order_books[1].contract_addr, HumanAddr("contract2".to_string()));
+            },
+            _ => {}
+        }
+    }
+    
 }

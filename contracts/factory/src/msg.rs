@@ -1,6 +1,6 @@
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Uint128};
 use schemars::JsonSchema;
-use secret_toolkit::utils::Query;
+use secret_toolkit::utils::{HandleCallback, Query};
 use serde::{Deserialize, Serialize};
 use crate::{contract::BLOCK_SIZE};
 
@@ -26,6 +26,20 @@ pub struct SecretOrderBookContractInitMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub enum ChangeFeeMsg {
+    ChangeFee {
+        token_index: i8,
+        min_amount: Uint128,
+        fee_amount: Uint128
+    }
+}
+
+impl HandleCallback for ChangeFeeMsg {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     CreateViewingKey {entropy: String},
     ChangeSecretOrderBookContractCodeId {code_id: u64, code_hash: String},
@@ -39,6 +53,7 @@ pub enum HandleMsg {
         auth_key: String, 
         amm_pair_address: HumanAddr,
         contract_address: HumanAddr,
+        contract_hash: String,
         token1_info: AssetInfo,
         token2_info: AssetInfo,
     },
@@ -111,6 +126,7 @@ pub enum QueryAnswer {
 pub struct SecretOrderBookContract {
     pub amm_pair_contract_addr: HumanAddr,
     pub contract_addr: HumanAddr,
+    pub contract_hash: String,
     pub asset_infos: Vec<AssetInfo>
 }
 

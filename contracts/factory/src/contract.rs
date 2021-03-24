@@ -2,12 +2,12 @@ use std::u128;
 
 use cosmwasm_std::{Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HandleResult, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, Uint128, to_binary};
 
-use crate::{msg::{AmmAssetInfo, AmmPairResponse, AmmQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContract, SecretOrderBookContractInitMsg, Token}, rand::sha_256};
+use crate::{msg::{AmmAssetInfo, AmmPairResponse, AmmQueryMsg, AssetInfo, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success, SecretOrderBookContract, SecretOrderBookContractInitMsg, ChangeFeeMsg, Token}, rand::sha_256};
 use crate::state::{save, load, may_load};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
  
-use secret_toolkit::{snip20::token_info_query, storage::{AppendStore, AppendStoreMut}, utils::{InitCallback, Query}};
+use secret_toolkit::{snip20::token_info_query, storage::{AppendStore, AppendStoreMut}, utils::{HandleCallback, InitCallback, Query}};
 
 /// prefix for viewing keys
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
@@ -66,10 +66,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::InitCallBackFromSecretOrderBookToFactory {
             auth_key, 
             amm_pair_address,
-            contract_address,  
+            contract_address, 
+            contract_hash, 
             token1_info, 
             token2_info
-        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address, token1_info, token2_info),
+        } => try_secret_order_book_instanciated_callback(deps, env, auth_key, amm_pair_address, contract_address,contract_hash, token1_info, token2_info),
         HandleMsg::ChangeAssetFee {
             amm_pairs_address,
             asset_contract_address,
@@ -223,6 +224,7 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     auth_key: String,
     amm_pair_address: HumanAddr,
     contract_address: HumanAddr,
+    contract_hash: String,
     token1_info: AssetInfo,
     token2_info: AssetInfo,
 ) -> HandleResult {   
@@ -238,6 +240,7 @@ pub fn try_secret_order_book_instanciated_callback<S: Storage, A: Api, Q: Querie
     let secret_order_book_contract:SecretOrderBookContract = SecretOrderBookContract{
         amm_pair_contract_addr: amm_pair_address.clone(),
         contract_addr: contract_address,
+        contract_hash,
         asset_infos: vec![
             token1_info,
             token2_info
@@ -268,12 +271,15 @@ pub fn try_change_asset_fee<S: Storage, A: Api, Q: Querier>(
             "Permission Denied.",
         ));
     }
-    // 1. Get each secret order book associated with each amm_pair_address indicated
-    let mut secret_order_books = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &mut deps.storage);
-    
-    for i in 0..amm_pairs_address.len() { 
-        let secret_order_book: SecretOrderBookContract = may_load(&secret_order_books, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice())?.unwrap();
-        let mut modified_secret_order_book:SecretOrderBookContract = secret_order_book.clone();
+
+    let mut cosmos_msgs = vec![];
+
+    for i in 0..amm_pairs_address.len() {
+        // 1. Get each secret order book associated with each amm_pair_address indicated 
+        let mut secret_order_book = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOK, &mut deps.storage);
+        let load_secret_order_book: SecretOrderBookContract = may_load(&secret_order_book, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice())?.unwrap();
+        let mut modified_secret_order_book:SecretOrderBookContract = load_secret_order_book.clone();
+
         let token_index: usize;
 
         // 2. Search the asset info that have the asset_contract_address indicated
@@ -288,14 +294,45 @@ pub fn try_change_asset_fee<S: Storage, A: Api, Q: Querier>(
         // TODO
         // 3. Modify the asset_info with the new fee and send to the secret order book this change
         // 3.1 PREFIX_SECRET_ORDER_BOOK
-        // 3.2 PREFIX_SECRET_ORDER_BOOKS
-        // 3.3 SEND TO SECRET ORDER BOOK CONTRACTS
         modified_secret_order_book.asset_infos[token_index].fee_amount = new_asset_fee;
-
-        save(&mut secret_order_books, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice(), &modified_secret_order_book)?;
+        modified_secret_order_book.asset_infos[token_index].min_amount = new_asset_fee.clone().multiply_ratio(Uint128(2),Uint128(1));
+        save(&mut secret_order_book, &deps.api.canonical_address(&amm_pairs_address[i])?.as_slice(), &modified_secret_order_book)?;
+        
+        // 3.2 PREFIX_SECRET_ORDER_BOOKS
+        let mut secret_order_books = PrefixedStorage::new(PREFIX_SECRET_ORDER_BOOKS, &mut deps.storage);
+        let mut index_to_modify: Option<usize> = None;
+        let mut store = AppendStoreMut::<SecretOrderBookContract, _>::attach(&mut secret_order_books).unwrap().unwrap();
+        let tx_iter: StdResult<Vec<SecretOrderBookContract>> = store.iter().collect();
+        for (index, v) in tx_iter.unwrap().iter().enumerate() {
+            if v.amm_pair_contract_addr == amm_pairs_address[i] {
+                index_to_modify = Some(index);
+                break;
+            }
+        };
+        if index_to_modify != None {
+            AppendStoreMut::set_at(&mut store, index_to_modify.unwrap() as u32,&modified_secret_order_book)?;
+            // save???
+        }
+        
+        // 3.3 SEND TO SECRET ORDER BOOK CONTRACT
+        let change_fee_msg = ChangeFeeMsg::ChangeFee {
+            token_index: token_index as i8,
+            fee_amount: modified_secret_order_book.asset_infos[token_index].fee_amount,
+            min_amount: modified_secret_order_book.asset_infos[token_index].min_amount
+        };
+    
+        let cosmos_msg = change_fee_msg.to_cosmos_msg(modified_secret_order_book.contract_hash.clone(), modified_secret_order_book.contract_addr.clone(), None)?;
+        cosmos_msgs.push(cosmos_msg)
     }
 
-    Ok(HandleResponse::default())
+    Ok(HandleResponse {
+        messages: cosmos_msgs,
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Status {
+            status: Success,
+            message: None,
+        })?),
+    })
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
