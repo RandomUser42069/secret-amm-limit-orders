@@ -4,10 +4,16 @@
 
 # TESTNET ADDRESSES
 
-* Secret Order Book Factory: secret13za6s8dkk84uhdev8mjjgt7y4p0ws0sdm3pj5n
+* Secret Order Book Factory: secret1ehjtfp2y58svwep2qm6zrktf4x8h280n4clxlc
+* All on pm2 processes
 
 TODO:
-* TODO: Admin can change the fees for an asset
+* Instance with current version off limit order amm on testnet with all scripts
+	* Order books for sETH e sOCEAN
+	* Website in prod mode 
+	* Triggerer scripts for both
+* Remove the update change code id from admin???
+
 * TODO: Redoo some logic of the check triggerer, dont want to have a loop there with max 10 entries
 * TODO: OrderTriggererScript to verifiy multiple pairs at the same time (Nodejs backend?)
 * TODO: SECURITY CHECK
@@ -20,11 +26,8 @@ TODO:
 * Future:
 	* Statistics? TVL with band oracle integration
 
-* Admin commands for updating?
-
 ## Limitations
 * Centralized way of triggering on each block
-* No fee taking to accomodate the triggerer gas fees
 
 ## What's done?
 ### Secret Order Book Factory Contract
