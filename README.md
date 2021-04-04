@@ -5,6 +5,7 @@
 # TESTNET ADDRESSES
 
 * Secret Order Book Factory: secret1ehjtfp2y58svwep2qm6zrktf4x8h280n4clxlc
+* npm run build.testnet .env.testnet
 * All on pm2 processes
 
 TODO:
